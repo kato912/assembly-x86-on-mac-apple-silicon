@@ -266,68 +266,6 @@ func (d *stepper) deleteCmd(args []string) {
 	fmt.Fprintln(d.out, i18n.T("dbg.noSuchBreak", args[0]))
 }
 
-// eval evaluates "label", "0x1234", "1234", "esp", "msg+4", "rbp-8".
-func (d *stepper) eval(expr string) (uint64, error) {
-	expr = strings.ReplaceAll(expr, " ", "")
-	if expr == "" {
-		return 0, errors.New(i18n.T("dbg.badExpr", expr))
-	}
-	var total uint64
-	sign := uint64(1)
-	start := 0
-	for i := 0; i <= len(expr); i++ {
-		if i < len(expr) && !(i > start && (expr[i] == '+' || expr[i] == '-')) {
-			continue
-		}
-		v, err := d.term(expr[start:i])
-		if err != nil {
-			return 0, err
-		}
-		total += sign * v
-		if i < len(expr) {
-			sign = 1
-			if expr[i] == '-' {
-				sign = ^uint64(0)
-			}
-		}
-		start = i + 1
-	}
-	return total, nil
-}
-
-func (d *stepper) term(t string) (uint64, error) {
-	lt := strings.ToLower(t)
-	switch {
-	case strings.HasPrefix(lt, "0x"):
-		if v, err := strconv.ParseUint(lt[2:], 16, 64); err == nil {
-			return v, nil
-		}
-	case strings.HasSuffix(lt, "h") && len(lt) > 1 && lt[0] >= '0' && lt[0] <= '9':
-		if v, err := strconv.ParseUint(lt[:len(lt)-1], 16, 64); err == nil {
-			return v, nil
-		}
-	case lt != "" && lt[0] >= '0' && lt[0] <= '9':
-		if v, err := strconv.ParseUint(lt, 10, 64); err == nil {
-			return v, nil
-		}
-	}
-	if r, ok := emu.RegByName(lt); ok {
-		return d.c.Value(r), nil
-	}
-	if lt == "eip" || lt == "rip" {
-		return d.c.RIP, nil
-	}
-	if s, ok := d.p.Image.Lookup(t); ok {
-		return s.Addr, nil
-	}
-	for _, s := range d.p.Image.Symbols { // local labels: _start.loop -> .loop / loop
-		if strings.HasSuffix(s.Name, "."+strings.TrimPrefix(t, ".")) {
-			return s.Addr, nil
-		}
-	}
-	return 0, errors.New(i18n.T("dbg.badExpr", t))
-}
-
 func (d *stepper) memCmd(args []string) {
 	if len(args) == 0 {
 		fmt.Fprintln(d.out, i18n.T("dbg.memUsage"))

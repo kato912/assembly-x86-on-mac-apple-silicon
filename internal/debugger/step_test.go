@@ -160,3 +160,48 @@ func TestMultiFileBreakpoints(t *testing.T) {
 		t.Errorf("exit code %d", code)
 	}
 }
+
+func TestExpressions(t *testing.T) {
+	p, _, _ := build(t, `
+section .data
+arr: dd 10, 20, 30, 40
+msg: db "Hi!", 0
+section .text
+global _start
+_start:
+    mov ecx, 2
+    mov eax, 1
+    int 0x80
+`, "")
+	d := &stepper{p: p, c: p.CPU}
+	d.s = NewSession(p)
+	for i := 0; i < 2; i++ { // run the two movs
+		d.s.Step()
+	}
+	arr := mustSym(t, p, "arr")
+	cases := map[string]uint64{
+		"-5":                  ^uint64(4),
+		"2*3+1":               7,
+		"(1+2)*3":             9,
+		"'A'":                 65,
+		"0b101":               5,
+		"arr + 4*2":           arr + 8,
+		"[arr]":               10,
+		"dword [arr + ecx*4]": 30,
+		"byte [msg+1]":        'i',
+		"word [msg]":          0x6948,
+		"ecx * 10 - 1":        19,
+		"[esp]":               1, // argc
+	}
+	for expr, want := range cases {
+		got, err := d.eval(expr)
+		if err != nil || got != want {
+			t.Errorf("eval(%q) = %#x, %v; want %#x", expr, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "1 +", "[arr", "nosuch", "2 3", "dword arr"} {
+		if _, err := d.eval(bad); err == nil {
+			t.Errorf("eval(%q) should fail", bad)
+		}
+	}
+}
