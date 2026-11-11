@@ -1,0 +1,10 @@
+# build output
+/nasmx86
+/nasmx86.exe
+/dist/
+*.o
+*.lst
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
