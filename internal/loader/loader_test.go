@@ -149,3 +149,72 @@ func TestEntryFallback(t *testing.T) {
 		t.Errorf("entry %#x %q", img.Entry, img.EntryName)
 	}
 }
+
+func TestLinkMultipleObjects(t *testing.T) {
+	main := assemble(t, 32, `
+extern add_one, counter
+global _start
+section .data
+local_x dd 7
+section .text
+_start:
+    mov eax, [counter]      ; data defined in the other file
+    call add_one            ; code defined in the other file
+    ret
+`)
+	util := assemble(t, 32, `
+global add_one, counter
+section .data
+counter dd 41
+local_x dd 99               ; same local name as in main: no conflict
+section .text
+add_one:
+    inc eax
+    ret
+`)
+	img, err := Link(main, util)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add, _ := img.Lookup("add_one")
+	ctr, _ := img.Lookup("counter")
+	if add.Obj != 1 || ctr.Obj != 1 {
+		t.Errorf("symbols should come from file 1: %+v %+v", add, ctr)
+	}
+	var mainText *Section
+	for _, s := range img.Sections {
+		if s.Name == ".text" && s.Obj == 0 {
+			mainText = s
+		}
+	}
+	// mov eax, [counter] = A1 <abs32>
+	if got := binary.LittleEndian.Uint32(mainText.Data[1:]); uint64(got) != ctr.Addr {
+		t.Errorf("extern data reloc: %#x want %#x", got, ctr.Addr)
+	}
+	// call add_one = E8 <rel32> at offset 5, next instruction at 10
+	rel := int32(binary.LittleEndian.Uint32(mainText.Data[6:]))
+	if mainText.Addr+10+uint64(int64(rel)) != add.Addr {
+		t.Errorf("extern call reloc: rel %#x", rel)
+	}
+	if img.EntryName != "_start" {
+		t.Errorf("entry %q", img.EntryName)
+	}
+}
+
+func TestLinkErrors(t *testing.T) {
+	a := assemble(t, 64, "global f\nsection .text\nf: ret\n")
+	b := assemble(t, 64, "global f\nsection .text\nf: nop\nret\n")
+	var de *DuplicateError
+	if _, err := Link(a, b); !errors.As(err, &de) || de.Name != "f" {
+		t.Errorf("duplicate: %v", err)
+	}
+	c := assemble(t, 32, "section .text\nnop\n")
+	if _, err := Link(a, c); err == nil {
+		t.Errorf("mixing 32- and 64-bit objects should fail")
+	}
+	d := assemble(t, 64, "extern missing\nglobal _start\nsection .text\n_start: call missing\n")
+	var ue *UndefinedError
+	if _, err := Link(d, a); !errors.As(err, &ue) || ue.Names[0] != "missing" {
+		t.Errorf("undefined: %v", err)
+	}
+}

@@ -1,6 +1,7 @@
 // Package loader is a tiny static linker: it takes the relocatable ELF
-// object produced by nasm, lays its sections out at Linux-like addresses,
-// resolves symbols and applies relocations, producing a ready-to-run image.
+// objects produced by nasm, lays their sections out at Linux-like addresses,
+// resolves symbols (across files for global/extern) and applies
+// relocations, producing a ready-to-run image.
 package loader
 
 import (
@@ -27,7 +28,9 @@ type Section struct {
 	Exec   bool
 	Write  bool
 	NoBits bool
+	Obj    int // index of the input file the section came from
 	index  int
+	align  uint64
 }
 
 // End returns the first address past the section.
@@ -39,6 +42,7 @@ type Symbol struct {
 	Addr    uint64
 	Section string // "" for absolute symbols (equ constants)
 	Global  bool
+	Obj     int // index of the input file that defines it
 }
 
 // Image is a linked program ready to be loaded into memory.
@@ -58,88 +62,135 @@ func (e *UndefinedError) Error() string {
 	return "undefined symbols: " + strings.Join(e.Names, ", ")
 }
 
-// Link loads and links the relocatable ELF object at path.
-func Link(path string) (*Image, error) {
-	f, err := elf.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	if f.Type != elf.ET_REL {
-		return nil, fmt.Errorf("%s is not a relocatable object", path)
+// DuplicateError reports a global symbol defined in more than one file.
+type DuplicateError struct {
+	Name  string
+	Files []string
+}
+
+func (e *DuplicateError) Error() string {
+	return fmt.Sprintf("symbol %q is defined in both %s", e.Name, strings.Join(e.Files, " and "))
+}
+
+// object is one input file being linked.
+type object struct {
+	path     string
+	f        *elf.File
+	secs     map[int]*Section // ELF section index -> placed section
+	syms     []elf.Symbol
+	symAddr  []uint64
+	resolved []bool // symAddr is valid
+}
+
+// Link links one or more relocatable ELF objects (as produced by nasm)
+// into a single image. global/extern symbols are resolved across files.
+func Link(paths ...string) (*Image, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no object files to link")
 	}
 	img := &Image{}
-	switch f.Machine {
-	case elf.EM_386:
-		img.Bits = 32
-	case elf.EM_X86_64:
-		img.Bits = 64
-	default:
-		return nil, fmt.Errorf("unsupported ELF machine %v", f.Machine)
-	}
-
-	// 1. Collect allocated sections into three groups like ld does:
-	//    code (r-x), read-only data (r--), writable data then bss (rw-).
-	var code, rodata, data, bss []*Section
-	byIndex := map[int]*Section{}
-	for i, s := range f.Sections {
-		if s.Flags&elf.SHF_ALLOC == 0 || (s.Type != elf.SHT_PROGBITS && s.Type != elf.SHT_NOBITS) {
-			continue
+	var objs []*object
+	defer func() {
+		for _, o := range objs {
+			o.f.Close()
 		}
-		sec := &Section{
-			Name:   s.Name,
-			Size:   s.Size,
-			Exec:   s.Flags&elf.SHF_EXECINSTR != 0,
-			Write:  s.Flags&elf.SHF_WRITE != 0,
-			NoBits: s.Type == elf.SHT_NOBITS,
-			index:  i,
+	}()
+	for _, path := range paths {
+		f, err := elf.Open(path)
+		if err != nil {
+			return nil, err
 		}
-		if !sec.NoBits {
-			sec.Data, err = s.Data()
-			if err != nil {
-				return nil, fmt.Errorf("reading section %s: %v", s.Name, err)
-			}
+		o := &object{path: path, f: f, secs: map[int]*Section{}}
+		objs = append(objs, o)
+		if f.Type != elf.ET_REL {
+			return nil, fmt.Errorf("%s is not a relocatable object", path)
 		}
-		byIndex[i] = sec
-		switch {
-		case sec.Exec:
-			code = append(code, sec)
-		case sec.NoBits:
-			bss = append(bss, sec)
-		case sec.Write:
-			data = append(data, sec)
+		bits := 0
+		switch f.Machine {
+		case elf.EM_386:
+			bits = 32
+		case elf.EM_X86_64:
+			bits = 64
 		default:
-			rodata = append(rodata, sec)
+			return nil, fmt.Errorf("unsupported ELF machine %v in %s", f.Machine, path)
+		}
+		if img.Bits == 0 {
+			img.Bits = bits
+		} else if img.Bits != bits {
+			return nil, fmt.Errorf("cannot link %d-bit %s with %d-bit %s", bits, path, img.Bits, paths[0])
+		}
+		if o.syms, err = f.Symbols(); err != nil {
+			o.syms = nil // no symbol table at all is fine
+		}
+		o.symAddr = make([]uint64, len(o.syms))
+		o.resolved = make([]bool, len(o.syms))
+	}
+
+	// 1. Collect allocated sections into three groups like ld does: code
+	//    (r-x), read-only data (r--), writable data then bss (rw-), keeping
+	//    the files in command-line order.
+	var code, rodata, data, bss []*Section
+	for oi, o := range objs {
+		for i, s := range o.f.Sections {
+			if s.Flags&elf.SHF_ALLOC == 0 || (s.Type != elf.SHT_PROGBITS && s.Type != elf.SHT_NOBITS) {
+				continue
+			}
+			sec := &Section{
+				Name:   s.Name,
+				Size:   s.Size,
+				Exec:   s.Flags&elf.SHF_EXECINSTR != 0,
+				Write:  s.Flags&elf.SHF_WRITE != 0,
+				NoBits: s.Type == elf.SHT_NOBITS,
+				Obj:    oi,
+				index:  i,
+				align:  s.Addralign,
+			}
+			if !sec.NoBits {
+				var err error
+				if sec.Data, err = s.Data(); err != nil {
+					return nil, fmt.Errorf("reading section %s of %s: %v", s.Name, o.path, err)
+				}
+			}
+			o.secs[i] = sec
+			switch {
+			case sec.Exec:
+				code = append(code, sec)
+			case sec.NoBits:
+				bss = append(bss, sec)
+			case sec.Write:
+				data = append(data, sec)
+			default:
+				rodata = append(rodata, sec)
+			}
 		}
 	}
 
-	// Common symbols (NASM `common`) become bss space.
-	syms, err := f.Symbols()
-	if err != nil && len(f.Sections) > 0 {
-		syms = nil // no symbol table at all is fine
-	}
+	// Common symbols (NASM "common") become bss space, one slot per name.
 	var commonSec *Section
-	for _, s := range syms {
-		if s.Section == elf.SHN_COMMON {
-			if commonSec == nil {
-				commonSec = &Section{Name: "COMMON", Write: true, NoBits: true, index: -1}
-				bss = append(bss, commonSec)
+	commonOff := map[string]uint64{}
+	commonSize := map[string]uint64{}
+	var commonNames []string
+	for _, o := range objs {
+		for _, s := range o.syms {
+			if s.Section != elf.SHN_COMMON {
+				continue
+			}
+			if _, ok := commonSize[s.Name]; !ok {
+				commonNames = append(commonNames, s.Name)
+			}
+			if s.Size > commonSize[s.Name] {
+				commonSize[s.Name] = s.Size
 			}
 		}
 	}
-	commonOff := map[string]uint64{}
-	if commonSec != nil {
-		for _, s := range syms {
-			if s.Section == elf.SHN_COMMON {
-				align := s.Value
-				if align == 0 {
-					align = 1
-				}
-				commonSec.Size = alignUp(commonSec.Size, align)
-				commonOff[s.Name] = commonSec.Size
-				commonSec.Size += s.Size
-			}
+	if len(commonNames) > 0 {
+		commonSec = &Section{Name: "COMMON", Write: true, NoBits: true, index: -1, align: 16}
+		for _, n := range commonNames {
+			commonSec.Size = alignUp(commonSec.Size, 8)
+			commonOff[n] = commonSec.Size
+			commonSec.Size += commonSize[n]
 		}
+		bss = append(bss, commonSec)
 	}
 
 	// 2. Lay out.
@@ -148,14 +199,6 @@ func Link(path string) (*Image, error) {
 		base = Base32
 	}
 	addr := base + page
-	elfAlign := func(s *Section) uint64 {
-		if s.index >= 0 {
-			if a := f.Sections[s.index].Addralign; a > 1 {
-				return a
-			}
-		}
-		return 1
-	}
 	for gi, group := range [][]*Section{code, rodata, append(data, bss...)} {
 		if len(group) == 0 {
 			continue
@@ -164,7 +207,7 @@ func Link(path string) (*Image, error) {
 			addr = alignUp(addr, page)
 		}
 		for _, s := range group {
-			addr = alignUp(addr, elfAlign(s))
+			addr = alignUp(addr, s.align)
 			s.Addr = addr
 			addr += s.Size
 		}
@@ -172,76 +215,104 @@ func Link(path string) (*Image, error) {
 	}
 	img.BrkStart = alignUp(addr, page)
 
-	// 3. Resolve symbols.
-	symAddr := make([]uint64, len(syms))
+	// 3. Resolve symbols: first each file's own definitions, then the global
+	//    table for symbols a file uses but does not define (extern).
+	type globalDef struct {
+		addr uint64
+		file string
+	}
+	globals := map[string]globalDef{}
+	for oi, o := range objs {
+		for i, s := range o.syms {
+			st, bind := elf.ST_TYPE(s.Info), elf.ST_BIND(s.Info)
+			secName := ""
+			switch {
+			case s.Section == elf.SHN_UNDEF:
+				continue
+			case s.Section == elf.SHN_ABS:
+				o.symAddr[i] = s.Value
+			case s.Section == elf.SHN_COMMON:
+				o.symAddr[i] = commonSec.Addr + commonOff[s.Name]
+				secName = "COMMON"
+			default:
+				sec := o.secs[int(s.Section)]
+				if sec == nil {
+					continue // symbol in a non-allocated (debug) section
+				}
+				o.symAddr[i] = sec.Addr + s.Value
+				secName = sec.Name
+			}
+			o.resolved[i] = true
+			if st == elf.STT_SECTION || st == elf.STT_FILE || s.Name == "" || strings.HasPrefix(s.Name, "..@") {
+				continue
+			}
+			if bind == elf.STB_GLOBAL || bind == elf.STB_WEAK {
+				if prev, dup := globals[s.Name]; dup && s.Section != elf.SHN_COMMON {
+					if bind == elf.STB_GLOBAL {
+						return nil, &DuplicateError{Name: s.Name, Files: []string{prev.file, o.path}}
+					}
+				} else {
+					globals[s.Name] = globalDef{o.symAddr[i], o.path}
+				}
+			}
+			img.Symbols = append(img.Symbols, Symbol{
+				Name:    s.Name,
+				Addr:    o.symAddr[i],
+				Section: secName,
+				Global:  bind == elf.STB_GLOBAL,
+				Obj:     oi,
+			})
+		}
+	}
+	sort.SliceStable(img.Symbols, func(i, j int) bool { return img.Symbols[i].Addr < img.Symbols[j].Addr })
 	var undefined []string
 	seenUndef := map[string]bool{}
-	for i, s := range syms {
-		st := elf.ST_TYPE(s.Info)
-		switch {
-		case s.Section == elf.SHN_UNDEF:
-			if s.Name != "" && !seenUndef[s.Name] {
+	for _, o := range objs {
+		for i, s := range o.syms {
+			if s.Section != elf.SHN_UNDEF || s.Name == "" {
+				continue
+			}
+			if g, ok := globals[s.Name]; ok {
+				o.symAddr[i], o.resolved[i] = g.addr, true
+			} else if !seenUndef[s.Name] {
 				seenUndef[s.Name] = true
 				undefined = append(undefined, s.Name)
 			}
-		case s.Section == elf.SHN_ABS:
-			symAddr[i] = s.Value
-		case s.Section == elf.SHN_COMMON:
-			symAddr[i] = commonSec.Addr + commonOff[s.Name]
-		default:
-			sec := byIndex[int(s.Section)]
-			if sec == nil {
-				continue // symbol in a non-allocated (debug) section
-			}
-			symAddr[i] = sec.Addr + s.Value
 		}
-		if st == elf.STT_SECTION || st == elf.STT_FILE || s.Name == "" || s.Section == elf.SHN_UNDEF {
-			continue
-		}
-		if strings.HasPrefix(s.Name, "..@") { // NASM macro-local labels
-			continue
-		}
-		secName := ""
-		if sec := byIndex[int(s.Section)]; sec != nil {
-			secName = sec.Name
-		} else if s.Section == elf.SHN_COMMON {
-			secName = "COMMON"
-		}
-		img.Symbols = append(img.Symbols, Symbol{
-			Name:    s.Name,
-			Addr:    symAddr[i],
-			Section: secName,
-			Global:  elf.ST_BIND(s.Info) == elf.STB_GLOBAL,
-		})
 	}
-	sort.SliceStable(img.Symbols, func(i, j int) bool { return img.Symbols[i].Addr < img.Symbols[j].Addr })
 
 	// 4. Apply relocations.
-	for _, rs := range f.Sections {
-		if rs.Type != elf.SHT_REL && rs.Type != elf.SHT_RELA {
-			continue
-		}
-		target := byIndex[int(rs.Info)]
-		if target == nil {
-			continue // relocations for debug sections
-		}
-		raw, err := rs.Data()
-		if err != nil {
-			return nil, err
-		}
-		if err := relocate(img.Bits, rs.Type == elf.SHT_RELA, raw, target, syms, symAddr, seenUndef); err != nil {
-			return nil, err
+	for _, o := range objs {
+		for _, rs := range o.f.Sections {
+			if rs.Type != elf.SHT_REL && rs.Type != elf.SHT_RELA {
+				continue
+			}
+			target := o.secs[int(rs.Info)]
+			if target == nil {
+				continue // relocations for debug sections
+			}
+			raw, err := rs.Data()
+			if err != nil {
+				return nil, err
+			}
+			if err := relocate(img.Bits, rs.Type == elf.SHT_RELA, raw, target, o.syms, o.symAddr, o.resolved); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if len(undefined) > 0 {
 		return nil, &UndefinedError{Names: undefined}
 	}
 
-	// 5. Entry point.
+	// 5. Entry point: a global _start, then any _start, then main.
 	for _, name := range []string{"_start", "main"} {
-		if s, ok := img.Lookup(name); ok && s.Section != "" {
-			img.Entry, img.EntryName = s.Addr, name
-			return img, nil
+		for _, wantGlobal := range []bool{true, false} {
+			for _, s := range img.Symbols {
+				if s.Name == name && s.Section != "" && (s.Global || !wantGlobal) {
+					img.Entry, img.EntryName = s.Addr, name
+					return img, nil
+				}
+			}
 		}
 	}
 	if len(code) == 0 || code[0].Size == 0 {
@@ -257,7 +328,7 @@ func Link(path string) (*Image, error) {
 	return img, nil
 }
 
-func relocate(bits int, rela bool, raw []byte, target *Section, syms []elf.Symbol, symAddr []uint64, undef map[string]bool) error {
+func relocate(bits int, rela bool, raw []byte, target *Section, syms []elf.Symbol, symAddr []uint64, resolved []bool) error {
 	le := binary.LittleEndian
 	entSize := 8
 	switch {
@@ -293,8 +364,8 @@ func relocate(bits int, rela bool, raw []byte, target *Section, syms []elf.Symbo
 		if symIdx > 0 && symIdx <= len(syms) {
 			S = symAddr[symIdx-1]
 			symName = syms[symIdx-1].Name
-			if syms[symIdx-1].Section == elf.SHN_UNDEF {
-				continue // reported as undefined symbol
+			if !resolved[symIdx-1] {
+				continue // reported as an undefined symbol
 			}
 		}
 		if target.Data == nil || r >= uint64(len(target.Data)) {
