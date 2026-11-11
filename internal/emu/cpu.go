@@ -255,7 +255,13 @@ func (c *CPU) ea(m x86asm.Mem, in *x86asm.Inst) uint64 {
 	if m.Index != 0 {
 		a += c.getReg(m.Index) * uint64(m.Scale)
 	}
-	a += uint64(m.Disp)
+	disp := m.Disp
+	if in.AddrSize == 64 && disp > 0x7fffffff && disp <= 0xffffffff && !isMoffs(in) {
+		// x86asm reports a disp32 in 64-bit mode zero-extended; the CPU
+		// sign-extends it ([rip-0x10], [rbp-0x100]).
+		disp = int64(int32(disp))
+	}
+	a += uint64(disp)
 	switch in.AddrSize {
 	case 16:
 		a &= 0xffff
@@ -263,6 +269,13 @@ func (c *CPU) ea(m x86asm.Mem, in *x86asm.Inst) uint64 {
 		a &= 0xffffffff
 	}
 	return a
+}
+
+// isMoffs reports whether in is mov with a full-width absolute address
+// (opcodes A0-A3), whose displacement is not sign-extended.
+func isMoffs(in *x86asm.Inst) bool {
+	op := in.Opcode >> 24
+	return in.Op == x86asm.MOV && op >= 0xa0 && op <= 0xa3
 }
 
 // argSize returns the operand size in bytes of an instruction argument.

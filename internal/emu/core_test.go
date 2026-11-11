@@ -212,3 +212,24 @@ func TestMaxSteps(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestNegativeDisp32(t *testing.T) {
+	// Backward RIP-relative references and large negative displacements
+	// are encoded as disp32 and must be sign-extended.
+	c := run(t, 64, `
+	jmp start
+before: dq 0x1111
+start:
+	lea rax, [rel before]
+	mov rbx, [rel before]
+	mov rcx, rsp
+	mov qword [rcx - 0x200], 0x2222
+	mov rdx, [rcx - 0x200]
+	lea rsi, [rcx - 0x12345]
+	sub rcx, rsi
+`)
+	expect(t, c, RAX, testCode+2)
+	expect(t, c, RBX, 0x1111)
+	expect(t, c, RDX, 0x2222)
+	expect(t, c, RCX, 0x12345)
+}
