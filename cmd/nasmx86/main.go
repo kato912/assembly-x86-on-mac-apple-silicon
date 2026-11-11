@@ -151,6 +151,8 @@ func (o *options) ownOption(args []string, i *int, value func(*int, string) (str
 		o.cfg.Bits = 32
 	case "-64", "--64", "-m64":
 		o.cfg.Bits = 64
+	case "--regs":
+		o.cfg.ShowRegs = true
 	case "--th", "--thai":
 		i18n.Lang = "th"
 	case "--en":

@@ -37,6 +37,7 @@ type Config struct {
 	NasmArgs []string // extra options passed to nasm
 	Args     []string // program arguments (argv[1:])
 	MaxSteps uint64
+	ShowRegs bool // print the registers when the program ends
 
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -227,6 +228,14 @@ func leN(v uint64, n int) []byte {
 // Finish interprets the error that stopped the program, prints any
 // message, and returns nasmx86's exit code.
 func (p *Program) Finish(err error) int {
+	code := p.finish(err)
+	if p.Cfg.ShowRegs {
+		fmt.Fprint(p.Cfg.Stderr, p.FormatRegs())
+	}
+	return code
+}
+
+func (p *Program) finish(err error) int {
 	var ex *emu.Exit
 	if errors.As(err, &ex) {
 		if ex.ByHalt {
