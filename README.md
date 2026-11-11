@@ -181,17 +181,37 @@ breakpoint #1 at line 63: push ebp
 |---|---|
 | Enter, `s [n]` | step one (or n) instructions, showing what changed |
 | `n` | next: step over a `call` (runs the whole function) |
-| `c` | continue until a breakpoint or the end (Ctrl-C interrupts) |
-| `b <line\|label>` | set a breakpoint (`b` alone lists them) |
-| `d [n\|line]` | delete breakpoint n (`d` alone deletes all) |
+| `finish` | run until the current function returns, and show its `eax`/`rax` |
+| `c` | continue until a breakpoint, a watchpoint or the end (Ctrl-C interrupts) |
+| `b <line\|label>` | set a breakpoint (`b` alone lists them; `b io.asm:12` in another file) |
+| `watch <reg\|addr>` | stop when it changes: `watch ecx`, `watch counter`, `watch byte [buf+3]` |
+| `d [n\|line]` | delete breakpoint/watchpoint n (`d` alone deletes all) |
 | `r` | registers and flags |
+| `p <expr>` | print a value: `p eax`, `p [count]`, `p dword [arr+ecx*4]`, `p/s msg` (string) |
+| `set <what> <value>` | change a register, flag or memory: `set eax 5`, `set zf 1`, `set dword [count] 0` |
 | `m <addr\|label\|reg> [len]` | hex dump of memory: `m msg`, `m esp 32`, `m buf+4 8` |
 | `x [n]` / `stack` | top n stack entries, with return addresses mapped back to lines |
+| `bt` | the call stack: which function called which (handy for recursion) |
 | `l` | list the source around the current line |
 | `q` | quit |
 
 The program's own input still works while debugging (commands are read from
 the terminal, even when the program's stdin is redirected).
+
+Example: why does my recursion return the wrong value?
+
+```
+(nasmx86) b 23              ← the base case of factorial
+(nasmx86) c
+(nasmx86) bt
+#0   fact    line 23: mov eax, 1
+#1   fact    line 18: call fact
+#2   fact    line 18: call fact
+#3   _start  line 8: call fact
+(nasmx86) finish
+returned from fact: eax = 0x00000001 (1)
+(nasmx86) watch eax         ← stop each time eax changes
+```
 
 ### Errors explained
 

@@ -177,17 +177,37 @@ $ nasmx86 --step --th examples/factorial32.asm
 |---|---|
 | Enter, `s [n]` | รันทีละ 1 (หรือ n) คำสั่ง พร้อมแสดงสิ่งที่เปลี่ยน |
 | `n` | next: ถ้าเป็น `call` จะรันทั้งฟังก์ชันจนกลับมา |
-| `c` | รันต่อจนเจอ breakpoint หรือโปรแกรมจบ (กด Ctrl-C เพื่อหยุด) |
-| `b <บรรทัด\|label>` | ตั้ง breakpoint (`b` เฉย ๆ = ดูรายการ) |
-| `d [n\|บรรทัด]` | ลบ breakpoint หมายเลข n (`d` เฉย ๆ = ลบทั้งหมด) |
+| `finish` | รันจนออกจากฟังก์ชันปัจจุบัน แล้วแสดงค่า `eax`/`rax` ที่คืนมา |
+| `c` | รันต่อจนเจอ breakpoint, watchpoint หรือโปรแกรมจบ (กด Ctrl-C เพื่อหยุด) |
+| `b <บรรทัด\|label>` | ตั้ง breakpoint (`b` เฉย ๆ = ดูรายการ; `b io.asm:12` = บรรทัดในไฟล์อื่น) |
+| `watch <รีจิสเตอร์\|แอดเดรส>` | หยุดเมื่อค่าเปลี่ยน: `watch ecx`, `watch counter`, `watch byte [buf+3]` |
+| `d [n\|บรรทัด]` | ลบ breakpoint/watchpoint หมายเลข n (`d` เฉย ๆ = ลบทั้งหมด) |
 | `r` | ดูรีจิสเตอร์และแฟล็ก |
+| `p <นิพจน์>` | แสดงค่า: `p eax`, `p [count]`, `p dword [arr+ecx*4]`, `p/s msg` (ข้อความ) |
+| `set <สิ่งที่แก้> <ค่า>` | แก้ค่ารีจิสเตอร์ แฟล็ก หรือหน่วยความจำ: `set eax 5`, `set zf 1`, `set dword [count] 0` |
 | `m <แอดเดรส\|label\|รีจิสเตอร์> [len]` | ดูหน่วยความจำ: `m msg`, `m esp 32`, `m buf+4 8` |
 | `x [n]` / `stack` | ดูสแตก n ช่องบนสุด พร้อมบอกว่า return address จะกลับไปบรรทัดไหน |
+| `bt` | ลำดับการเรียกฟังก์ชัน ว่าใครเรียกใคร (มีประโยชน์มากกับ recursion) |
 | `l` | แสดงซอร์สโค้ดรอบบรรทัดปัจจุบัน |
 | `q` | ออก |
 
 ระหว่างดีบัก โปรแกรมยังรับ input ได้ตามปกติ (คำสั่งดีบักอ่านจากเทอร์มินัลโดยตรง
 แม้ stdin ของโปรแกรมจะถูก redirect)
+
+ตัวอย่าง: ทำไม recursion คืนค่าผิด?
+
+```
+(nasmx86) b 23              ← base case ของ factorial
+(nasmx86) c
+(nasmx86) bt
+#0   fact    line 23: mov eax, 1
+#1   fact    line 18: call fact
+#2   fact    line 18: call fact
+#3   _start  line 8: call fact
+(nasmx86) finish
+returned from fact: eax = 0x00000001 (1)
+(nasmx86) watch eax         ← หยุดทุกครั้งที่ eax เปลี่ยน
+```
 
 ### ข้อผิดพลาดที่อธิบายให้
 

@@ -131,31 +131,45 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
 	"dbg.banner": {en: "nasmx86 debugger: Enter = step one instruction, h = help, q = quit",
 		th: "ดีบักเกอร์ nasmx86: กด Enter = รันทีละคำสั่ง, h = ดูวิธีใช้, q = ออก"},
 	"dbg.help": {en: `commands:
-  Enter, s [n]     step one (or n) instructions
-  n                next: like s, but runs a whole call until it returns
-  c                continue until a breakpoint or the end of the program
-  b <line|label>   set a breakpoint (b alone lists them; b util.asm:5
-                   for a line in another file)
-  d [n|line]       delete breakpoint n (d alone deletes all)
-  r                show registers and flags
-  m <addr> [len]   hex dump of memory, e.g.  m msg   m esp 32   m buf+4 8
-  x [n], stack     show the top n stack entries (default 8)
-  l                list the source around the current line
-  q                quit
-(Ctrl-C stops a running "c" or "n")
+  Enter, s [n]       step one (or n) instructions
+  n                  next: like s, but runs a whole call until it returns
+  finish             run until the current function returns (shows eax/rax)
+  c                  continue until a breakpoint, a watchpoint or the end
+  b <line|label>     set a breakpoint (b alone lists them; b util.asm:5
+                     for a line in another file)
+  watch <what>       stop when it changes: watch ecx, watch counter,
+                     watch byte [buf+3] (watch alone lists them)
+  d [n|line]         delete breakpoint/watchpoint n (d alone deletes all)
+  r                  show registers and flags
+  p <expr>           print a value: p eax, p [count], p dword [arr+ecx*4],
+                     p/s msg (a string), p ecx*4+1
+  set <what> <val>   change it: set eax 5, set zf 1, set dword [count] 0
+  m <addr> [len]     hex dump of memory, e.g.  m msg   m esp 32   m buf+4 8
+  x [n], stack       show the top n stack entries (default 8)
+  bt                 show the call stack (which function called which)
+  l                  list the source around the current line
+  q                  quit
+(Ctrl-C stops a running c, n or finish)
 `, th: `คำสั่ง:
-  Enter, s [n]     รันทีละ 1 (หรือ n) คำสั่ง
-  n                next: เหมือน s แต่ถ้าเป็น call จะรันทั้งฟังก์ชันจนกลับมา
-  c                รันต่อจนเจอ breakpoint หรือโปรแกรมจบ
-  b <บรรทัด|label>  ตั้ง breakpoint (พิมพ์ b เฉย ๆ เพื่อดูรายการ;
-                   b util.asm:5 สำหรับบรรทัดในไฟล์อื่น)
-  d [n|บรรทัด]      ลบ breakpoint หมายเลข n (d เฉย ๆ = ลบทั้งหมด)
-  r                แสดงรีจิสเตอร์และแฟล็ก
-  m <แอดเดรส> [len] แสดงหน่วยความจำแบบเลขฐานสิบหก เช่น  m msg   m esp 32   m buf+4 8
-  x [n], stack     แสดงข้อมูลบนสแตก n ช่องบนสุด (ค่าเริ่มต้น 8)
-  l                แสดงซอร์สโค้ดรอบบรรทัดปัจจุบัน
-  q                ออก
-(กด Ctrl-C เพื่อหยุดการรันของ "c" หรือ "n")
+  Enter, s [n]       รันทีละ 1 (หรือ n) คำสั่ง
+  n                  next: เหมือน s แต่ถ้าเป็น call จะรันทั้งฟังก์ชันจนกลับมา
+  finish             รันจนออกจากฟังก์ชันปัจจุบัน (แสดงค่า eax/rax ที่คืนมา)
+  c                  รันต่อจนเจอ breakpoint, watchpoint หรือโปรแกรมจบ
+  b <บรรทัด|label>    ตั้ง breakpoint (พิมพ์ b เฉย ๆ เพื่อดูรายการ;
+                     b util.asm:5 สำหรับบรรทัดในไฟล์อื่น)
+  watch <สิ่งที่ดู>     หยุดเมื่อค่าเปลี่ยน: watch ecx, watch counter,
+                     watch byte [buf+3] (watch เฉย ๆ = ดูรายการ)
+  d [n|บรรทัด]        ลบ breakpoint/watchpoint หมายเลข n (d เฉย ๆ = ลบทั้งหมด)
+  r                  แสดงรีจิสเตอร์และแฟล็ก
+  p <นิพจน์>          แสดงค่า: p eax, p [count], p dword [arr+ecx*4],
+                     p/s msg (ข้อความ), p ecx*4+1
+  set <สิ่งที่แก้> <ค่า> แก้ค่า: set eax 5, set zf 1, set dword [count] 0
+  m <แอดเดรส> [len]   แสดงหน่วยความจำ เช่น  m msg   m esp 32   m buf+4 8
+  x [n], stack       แสดงข้อมูลบนสแตก n ช่องบนสุด (ค่าเริ่มต้น 8)
+  bt                 แสดงลำดับการเรียกฟังก์ชัน (ใครเรียกใคร)
+  l                  แสดงซอร์สโค้ดรอบบรรทัดปัจจุบัน
+  q                  ออก
+(กด Ctrl-C เพื่อหยุดการรันของ c, n หรือ finish)
 `},
 	"dbg.unknown":       {en: "unknown command %q (type h for help)", th: "ไม่รู้จักคำสั่ง %q (พิมพ์ h เพื่อดูวิธีใช้)"},
 	"dbg.finished":      {en: "the program has already finished (exit code %d). Use r, m, x to look around, q to quit.", th: "โปรแกรมจบไปแล้ว (exit code %d) ใช้ r, m, x เพื่อตรวจดู หรือ q เพื่อออก"},
