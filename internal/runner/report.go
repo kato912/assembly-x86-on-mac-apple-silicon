@@ -46,23 +46,35 @@ func (p *Program) Where(addr uint64) string {
 	return s
 }
 
-// CodeText strips a trailing ; comment and surrounding space.
+// CodeText strips a trailing ; comment and collapses runs of spaces/tabs
+// (outside string literals) so source lines display compactly.
 func CodeText(s string) string {
+	var b strings.Builder
 	var q byte
+	space := false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		switch {
-		case q != 0:
-			if c == q {
-				q = 0
+		if q == 0 {
+			if c == ';' {
+				break
 			}
-		case c == '"' || c == '\'' || c == '`':
-			q = c
-		case c == ';':
-			return strings.TrimSpace(s[:i])
+			if c == ' ' || c == '\t' {
+				space = true
+				continue
+			}
+			if c == '"' || c == '\'' || c == '`' {
+				q = c
+			}
+		} else if c == q {
+			q = 0
 		}
+		if space && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		space = false
+		b.WriteByte(c)
 	}
-	return strings.TrimSpace(s)
+	return b.String()
 }
 
 // Addr formats an address at the program's natural width.

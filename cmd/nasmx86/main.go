@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/debugger"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
 )
@@ -19,6 +20,8 @@ type options struct {
 	cfg     runner.Config
 	help    bool
 	version bool
+	trace   bool
+	step    bool
 }
 
 // usageError is a command-line mistake; it is printed with the usage hint.
@@ -42,7 +45,23 @@ func main() {
 		fmt.Print(i18n.T("usage"))
 		return
 	}
-	os.Exit(runner.Run(opts.cfg))
+	os.Exit(run(opts))
+}
+
+func run(o *options) int {
+	p, code := runner.Build(o.cfg)
+	if p == nil {
+		return code
+	}
+	defer p.Close()
+	var err error
+	switch {
+	case o.trace:
+		err = debugger.Trace(debugger.NewSession(p), p.Cfg.Stderr)
+	default:
+		err = p.CPU.Run()
+	}
+	return p.Finish(err)
 }
 
 // nasm options that take their value as the next argument.
@@ -151,6 +170,8 @@ func (o *options) ownOption(args []string, i *int, value func(*int, string) (str
 		o.cfg.Bits = 32
 	case "-64", "--64", "-m64":
 		o.cfg.Bits = 64
+	case "--trace":
+		o.trace = true
 	case "--regs":
 		o.cfg.ShowRegs = true
 	case "--th", "--thai":
