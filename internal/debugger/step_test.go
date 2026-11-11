@@ -395,3 +395,23 @@ func TestGdbInfoAndPrint(t *testing.T) {
 		}
 	}
 }
+
+func TestGdbExamineAndDisassemble(t *testing.T) {
+	out, _ := session(t, "s\ns\nx/4xw $esp\nx/s &msg\nx/5xb msg\nx\nx/2i $pc\nx/dw $esp\nx 2\ndisassemble\ndisas fact\nx/xw 0\nq\n")
+	for _, w := range []string{
+		"\t0x0804900a\t0x00000001", // return address of "call fact", then argc
+		"0x804a000 <msg>:\t\"done\\n\"",
+		"0x804a000 <msg>:\t0x64\t0x6f\t0x6e\t0x65\t0x0a",
+		"=> 0x8049013 <fact>:\tcmp    eax, 0x1",
+		"Dump of assembler code for function fact:",
+		"=> 0x08049013 <+0>:\tcmp    eax, 0x1",
+		"; line 14",
+		"End of assembler dump.",
+		"Cannot access memory at address 0x0",
+		"← esp", // "x 2" is still the stack view
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+}

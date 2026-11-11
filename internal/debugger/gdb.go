@@ -267,3 +267,194 @@ func (d *stepper) infoBreakpoints() {
 		fmt.Fprintln(d.out, it.line)
 	}
 }
+
+// xState remembers gdb's last examine format, unit and next address, so a
+// bare "x" continues where the previous one stopped.
+type xState struct {
+	format byte
+	unit   int
+	next   uint64
+}
+
+// parseXFormat splits gdb's "/NFU" into count, format letter and unit size.
+func (d *stepper) parseXFormat(f string) (count int, format byte, unit int) {
+	count, format, unit = 1, d.xs.format, d.xs.unit
+	if format == 0 {
+		format, unit = 'x', 4
+	}
+	digits := ""
+	for _, c := range f {
+		switch {
+		case c >= '0' && c <= '9':
+			digits += string(c)
+		case strings.ContainsRune("xduotacsiz", c):
+			format = byte(c)
+		case c == 'b':
+			unit = 1
+		case c == 'h':
+			unit = 2
+		case c == 'w':
+			unit = 4
+		case c == 'g':
+			unit = 8
+		}
+	}
+	if n, err := strconv.Atoi(digits); err == nil && n > 0 {
+		count = n
+	}
+	if count > 1024 {
+		count = 1024
+	}
+	return
+}
+
+// insnText renders one instruction gdb-style: "mov    eax, 0x4".
+func (d *stepper) insnText(addr uint64) (string, int, bool) {
+	in, err := d.c.Decode(addr)
+	if err != nil {
+		return "", 0, false
+	}
+	text := d.p.Disasm(in, addr)
+	if i := strings.IndexByte(text, ' '); i > 0 {
+		text = fmt.Sprintf("%-6s %s", text[:i], text[i+1:])
+	}
+	return text, in.Len, true
+}
+
+// examine implements gdb's x/NFU addr.
+func (d *stepper) examine(format, expr string) {
+	count, f, unit := d.parseXFormat(format)
+	addr := d.xs.next
+	if strings.TrimSpace(expr) != "" {
+		v, err := d.eval(expr)
+		if err != nil {
+			fmt.Fprintln(d.out, err)
+			return
+		}
+		addr = v
+	}
+	d.xs.format = f
+	if f != 's' && f != 'i' {
+		d.xs.unit = unit
+	}
+	label := func(a uint64) string { return d.symbolic(a) + ":" }
+	switch f {
+	case 's':
+		for i := 0; i < count; i++ {
+			b := d.c.Mem.Peek(addr, 4096)
+			if len(b) == 0 {
+				fmt.Fprintln(d.out, i18n.T("dbg.cannotAccess", fmt.Sprintf("%#x", addr)))
+				break
+			}
+			n := 0
+			for n < len(b) && b[n] != 0 {
+				n++
+			}
+			fmt.Fprintf(d.out, "%s\t%s\n", label(addr), strconv.Quote(string(b[:n])))
+			addr += uint64(n) + 1
+		}
+	case 'i':
+		for i := 0; i < count; i++ {
+			text, n, ok := d.insnText(addr)
+			if !ok {
+				fmt.Fprintln(d.out, i18n.T("dbg.cannotAccess", fmt.Sprintf("%#x", addr)))
+				break
+			}
+			mark := "   "
+			if addr == d.c.RIP {
+				mark = "=> "
+			}
+			fmt.Fprintf(d.out, "%s%s\t%s\n", mark, label(addr), text)
+			addr += uint64(n)
+		}
+	default:
+		perLine := map[int]int{1: 8, 2: 8, 4: 4, 8: 2}[unit]
+		for i := 0; i < count; i++ {
+			if i%perLine == 0 {
+				if i > 0 {
+					fmt.Fprintln(d.out)
+				}
+				fmt.Fprint(d.out, label(addr))
+			}
+			v, err := d.readMem(addr, unit)
+			if err != nil {
+				fmt.Fprintln(d.out)
+				fmt.Fprintln(d.out, i18n.T("dbg.cannotAccess", fmt.Sprintf("%#x", addr)))
+				d.xs.next = addr
+				return
+			}
+			var s string
+			switch f {
+			case 'x':
+				s = fmt.Sprintf("0x%0*x", 2*unit, v)
+			case 't':
+				s = fmt.Sprintf("%0*b", 8*unit, v)
+			default:
+				s = d.formatAs(v, unit, f)
+			}
+			fmt.Fprint(d.out, "\t"+s)
+			addr += uint64(unit)
+		}
+		fmt.Fprintln(d.out)
+	}
+	d.xs.next = addr
+}
+
+// function finds the function (non-local label) containing addr and the
+// end of its code.
+func (d *stepper) function(addr uint64) (name string, start, end uint64, ok bool) {
+	sec := d.p.Image.SectionAt(addr)
+	if sec == nil || !sec.Exec {
+		return "", 0, 0, false
+	}
+	start, end = sec.Addr, sec.End()
+	name = "??"
+	for _, s := range d.p.Image.Symbols { // sorted by address
+		if s.Section != sec.Name || strings.Contains(s.Name, ".") || d.p.Image.SectionAt(s.Addr) != sec {
+			continue
+		}
+		if s.Addr <= addr {
+			name, start = s.Name, s.Addr
+		} else if s.Addr < end {
+			end = s.Addr
+			break
+		}
+	}
+	return name, start, end, true
+}
+
+// disassemble implements gdb's disassemble [function|address].
+func (d *stepper) disassemble(expr string) {
+	at := d.c.RIP
+	if strings.TrimSpace(expr) != "" {
+		v, err := d.eval(expr)
+		if err != nil {
+			fmt.Fprintln(d.out, err)
+			return
+		}
+		at = v
+	}
+	name, start, end, ok := d.function(at)
+	if !ok {
+		fmt.Fprintln(d.out, i18n.T("dbg.notCode", fmt.Sprintf("%#x", at)))
+		return
+	}
+	fmt.Fprintln(d.out, i18n.T("dbg.disasHeader", name))
+	for a, n := start, 0; a < end && n < 200; n++ {
+		text, length, ok := d.insnText(a)
+		if !ok {
+			break
+		}
+		mark := "   "
+		if a == d.c.RIP {
+			mark = "=> "
+		}
+		line := ""
+		if loc, ok := d.p.LocAt(a); ok {
+			line = fmt.Sprintf("  ; line %d", loc.Line)
+		}
+		fmt.Fprintf(d.out, "%s%#08x <+%d>:\t%-28s%s\n", mark, a, a-start, text, line)
+		a += uint64(length)
+	}
+	fmt.Fprintln(d.out, i18n.T("dbg.disasEnd"))
+}

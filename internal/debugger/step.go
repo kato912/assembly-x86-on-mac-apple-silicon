@@ -43,6 +43,7 @@ type stepper struct {
 	exited  bool // it exited normally (so there is no call stack left)
 	code    int  // nasmx86 exit code once stopped
 	histN   int  // gdb value history number ($1, $2, ...)
+	xs      xState
 }
 
 // Interactive runs the --step debugger, reading commands from in and
@@ -122,8 +123,18 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			d.setCmd(args)
 		case "watch", "w":
 			d.watchCmd(args)
-		case "x", "stack":
+		case "x":
+			// "x" or "x 8" is nasmx86's stack view; "x/4xw $esp" and
+			// "x &msg" are gdb's memory examiner.
+			if format != "" || (rest != "" && !isNumber(rest)) {
+				d.examine(format, rest)
+			} else {
+				d.stackCmd(args)
+			}
+		case "stack":
 			d.stackCmd(args)
+		case "disassemble", "disas", "disass":
+			d.disassemble(rest)
 		case "bt", "backtrace", "where":
 			if d.exited {
 				d.alive()
@@ -144,6 +155,11 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			fmt.Fprintln(out, i18n.T("dbg.unknown", cmd))
 		}
 	}
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.Atoi(strings.TrimSpace(s))
+	return err == nil
 }
 
 func (d *stepper) alive() bool {
