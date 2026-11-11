@@ -95,10 +95,27 @@ nasmx86 hello.asm                 # assemble + link + run
 echo 5 | nasmx86 factorial32.asm  # stdin works like on Linux
 nasmx86 prog.asm arg1 arg2        # arguments go to the program (argc/argv on the stack)
 nasmx86 prog.asm; echo $?         # the exit code is the program's exit code
+nasmx86 main.asm io.asm           # a program split over several files
 ```
 
 More examples are in [`examples/`](examples): reading input, loops, arrays,
-functions with stack arguments, recursion (factorial) — in 32 and 64 bits.
+functions with stack arguments, recursion (factorial), a program split over
+two files ([`examples/multifile`](examples/multifile)) — in 32 and 64 bits.
+
+### Programs with several files
+
+List all the `.asm` files, main program first; labels shared between them are
+declared `global` where they are defined and `extern` where they are used,
+exactly as with `nasm` + `ld`:
+
+```bash
+nasmx86 main.asm io.asm mathlib.asm   # arguments for the program go after the files
+nasmx86 main.asm io.o                 # files already assembled with nasm -f elf32/elf64 work too
+```
+
+Errors and `--trace` name the file (`io.asm line 12: ...`), and the debugger
+accepts `b io.asm:12`. To pass an argument that ends in `.asm` to the program,
+put `--` before it.
 
 ### 32 or 64 bit?
 
@@ -203,13 +220,15 @@ and or xor not test shl sal shr sar rol ror rcl rcr shld shrd
 jmp jcc jcxz jecxz jrcxz loop loope loopne call ret enter leave
 setcc cmovcc bt bts btr btc bsf bsr bswap
 movs stos lods cmps scas (with rep/repe/repne) cld std clc stc cmc
-xlat lahf sahf nop hlt int 0x80 syscall`
+xlat lahf sahf nop hlt int 0x80 syscall`, and the BCD adjustments
+`daa das aaa aas aam aad` (32-bit; like real CPUs, not available in 64-bit mode).
 
 **Addressing modes:** `[disp]`, `[base]`, `[base+disp]`,
 `[base+index*scale+disp]`, RIP-relative (`default rel`, `[rel x]`).
 
 **System calls** (Linux numbers, both ABIs): `read write open openat creat close
-lseek unlink brk getpid time exit exit_group`. Others return `-ENOSYS` with a
+lseek unlink stat fstat mkdir rmdir rename brk getpid time gettimeofday
+clock_gettime nanosleep exit exit_group`. Others return `-ENOSYS` with a
 warning.
 
 **Program start** is like Linux: `argc/argv/envp` on the stack, registers zero,
@@ -220,8 +239,9 @@ warning.
 ## Limitations
 
 - No C library: `extern printf` etc. cannot work — use system calls.
-- No floating point (x87), SSE/AVX, 16-bit DOS programs, or privileged instructions.
-- Single-threaded; no signals, `mmap`, `fork`.
+- NASM syntax for Linux only: not MASM/TASM, GAS (AT&T), DOS (`int 21h`) or Windows programs.
+- No floating point (x87), SSE/AVX, or privileged instructions.
+- Single-threaded; no signals, `mmap`, `fork`, sockets.
 - `hlt` ends the program (real Linux would crash) — nasmx86 prints a note.
 - Flags that the CPU manual calls *undefined* (e.g. SF/ZF after `mul`) may differ
   from a particular real CPU — real CPUs differ from each other there too.

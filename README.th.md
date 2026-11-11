@@ -93,10 +93,25 @@ nasmx86 hello.asm                 # แปลง + ลิงก์ + รัน
 echo 5 | nasmx86 factorial32.asm  # รับ input ทาง stdin ได้เหมือนบน Linux
 nasmx86 prog.asm arg1 arg2        # อาร์กิวเมนต์ส่งให้โปรแกรม (argc/argv อยู่บนสแตก)
 nasmx86 prog.asm; echo $?         # exit code คือ exit code ของโปรแกรม
+nasmx86 main.asm io.asm           # โปรแกรมที่แยกเป็นหลายไฟล์
 ```
 
 ดูตัวอย่างเพิ่มเติมได้ที่ [`examples/`](examples): รับ input, ลูป, อาร์เรย์,
-ฟังก์ชันที่ส่งพารามิเตอร์ทางสแตก, การเรียกซ้ำ (factorial) — มีทั้ง 32 และ 64 บิต
+ฟังก์ชันที่ส่งพารามิเตอร์ทางสแตก, การเรียกซ้ำ (factorial), โปรแกรมที่แยกสองไฟล์
+([`examples/multifile`](examples/multifile)) — มีทั้ง 32 และ 64 บิต
+
+### โปรแกรมหลายไฟล์
+
+ใส่ไฟล์ `.asm` ทุกไฟล์ต่อกัน โดยไฟล์โปรแกรมหลักอยู่แรกสุด label ที่ใช้ข้ามไฟล์ให้ประกาศ
+`global` ในไฟล์ที่นิยาม และ `extern` ในไฟล์ที่เรียกใช้ เหมือนตอนใช้ `nasm` + `ld`:
+
+```bash
+nasmx86 main.asm io.asm mathlib.asm   # อาร์กิวเมนต์ของโปรแกรมใส่ต่อหลังรายชื่อไฟล์
+nasmx86 main.asm io.o                 # ไฟล์ที่แปลงด้วย nasm -f elf32/elf64 แล้วก็ใช้ได้
+```
+
+ข้อความ error และ `--trace` จะบอกชื่อไฟล์ (`io.asm line 12: ...`) และในดีบักเกอร์ใช้
+`b io.asm:12` ได้ ถ้าต้องการส่งอาร์กิวเมนต์ที่ลงท้ายด้วย `.asm` ให้โปรแกรม ให้ใส่ `--` นำหน้า
 
 ### 32 หรือ 64 บิต?
 
@@ -200,13 +215,15 @@ and or xor not test shl sal shr sar rol ror rcl rcr shld shrd
 jmp jcc jcxz jecxz jrcxz loop loope loopne call ret enter leave
 setcc cmovcc bt bts btr btc bsf bsr bswap
 movs stos lods cmps scas (พร้อม rep/repe/repne) cld std clc stc cmc
-xlat lahf sahf nop hlt int 0x80 syscall`
+xlat lahf sahf nop hlt int 0x80 syscall` และคำสั่ง BCD
+`daa das aaa aas aam aad` (เฉพาะ 32 บิต เหมือน CPU จริงที่ไม่มีคำสั่งเหล่านี้ในโหมด 64 บิต)
 
 **Addressing mode:** `[disp]`, `[base]`, `[base+disp]`,
 `[base+index*scale+disp]`, RIP-relative (`default rel`, `[rel x]`)
 
 **System call** (หมายเลขของ Linux ทั้งสอง ABI): `read write open openat creat close
-lseek unlink brk getpid time exit exit_group` ตัวอื่นจะคืนค่า `-ENOSYS` พร้อมคำเตือน
+lseek unlink stat fstat mkdir rmdir rename brk getpid time gettimeofday
+clock_gettime nanosleep exit exit_group` ตัวอื่นจะคืนค่า `-ENOSYS` พร้อมคำเตือน
 
 **การเริ่มโปรแกรม** เหมือน Linux: มี `argc/argv/envp` บนสแตก รีจิสเตอร์เป็นศูนย์
 `.text` เริ่มที่ `0x08049000` (32 บิต) / `0x401000` (64 บิต) ถ้า entry point เป็น `main`
@@ -215,8 +232,9 @@ lseek unlink brk getpid time exit exit_group` ตัวอื่นจะคื�
 ## ข้อจำกัด
 
 - ไม่มีไลบรารี C: ใช้ `extern printf` ฯลฯ ไม่ได้ — ให้ใช้ system call
-- ไม่รองรับทศนิยม (x87), SSE/AVX, โปรแกรม DOS 16 บิต และคำสั่งสิทธิ์พิเศษ
-- ทำงานเธรดเดียว ไม่มี signal, `mmap`, `fork`
+- รองรับเฉพาะ syntax ของ NASM สำหรับ Linux: ไม่รองรับ MASM/TASM, GAS (AT&T), โปรแกรม DOS (`int 21h`) หรือ Windows
+- ไม่รองรับทศนิยม (x87), SSE/AVX และคำสั่งสิทธิ์พิเศษ
+- ทำงานเธรดเดียว ไม่มี signal, `mmap`, `fork`, socket
 - `hlt` จะจบโปรแกรม (บน Linux จริงจะ crash) — nasmx86 แสดงหมายเหตุให้
 - แฟล็กที่คู่มือ CPU ระบุว่า *undefined* (เช่น SF/ZF หลัง `mul`) อาจไม่ตรงกับ CPU บางรุ่น
   — ซึ่ง CPU จริงแต่ละรุ่นก็ให้ค่าต่างกันอยู่แล้ว
