@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // Linux errno values (returned negated in rax/eax).
@@ -39,6 +40,9 @@ type Linux struct {
 
 	files  map[int]*fdEntry
 	warned map[uint64]bool
+
+	brkStart, brkCur uint64
+	heap             *Region
 }
 
 type fdEntry struct {
@@ -65,9 +69,9 @@ func (l *Linux) warn(key string, args ...any) {
 }
 
 var sys32 = map[uint64]string{1: "exit", 3: "read", 4: "write", 5: "open", 6: "close",
-	13: "time", 19: "lseek", 20: "getpid", 45: "brk", 252: "exit_group", 295: "openat"}
+	8: "creat", 10: "unlink", 13: "time", 19: "lseek", 20: "getpid", 45: "brk", 252: "exit_group", 295: "openat"}
 var sys64 = map[uint64]string{0: "read", 1: "write", 2: "open", 3: "close", 8: "lseek",
-	12: "brk", 39: "getpid", 60: "exit", 201: "time", 231: "exit_group", 257: "openat"}
+	12: "brk", 39: "getpid", 60: "exit", 85: "creat", 87: "unlink", 201: "time", 231: "exit_group", 257: "openat"}
 
 // SyscallName returns the Linux name of system call nr for the ABI.
 func SyscallName(nr uint64, int80 bool) string {
@@ -132,9 +136,45 @@ func (l *Linux) dispatch(c *CPU, name string, int80 bool, a [6]uint64) (ret int6
 		return 0, fmt.Sprintf("%s(%d)", name, int32(a[0])), true, &Exit{Code: code}
 	case "write":
 		ret, desc = l.sysWrite(c, a[0], a[1], a[2])
-		return ret, desc, true, nil
+	case "read":
+		ret, desc = l.sysRead(c, a[0], a[1], a[2])
+	case "open":
+		ret, desc = l.sysOpen(c, a[0], a[1], a[2])
+	case "openat":
+		if int32(a[0]) != atFDCWD {
+			if p, err := cString(c, a[1]); err != nil || len(p) == 0 || p[0] != '/' {
+				return -ENOSYS, fmt.Sprintf("openat(%d, %#x, ...)", int32(a[0]), a[1]), false, nil
+			}
+		}
+		ret, desc = l.sysOpen(c, a[1], a[2], a[3])
+		desc = "openat(AT_FDCWD, " + strings.TrimPrefix(desc, "open(")
+	case "creat":
+		ret, desc = l.sysOpen(c, a[0], oWRONLY|oCREAT|oTRUNC, a[1])
+		desc = "creat(" + strings.TrimPrefix(desc, "open(")
+	case "unlink":
+		ret, desc = l.sysUnlink(c, a[0])
+	case "close":
+		ret, desc = l.sysClose(int(int32(a[0])))
+	case "lseek":
+		off := int64(a[1])
+		if int80 {
+			off = int64(int32(a[1]))
+		}
+		ret, desc = l.sysLseek(int(int32(a[0])), off, int(a[2]))
+	case "brk":
+		ret = int64(l.sysBrk(c, c.wrap(a[0])))
+		desc = fmt.Sprintf("brk(%#x)", a[0])
+		if c.Mode == 32 {
+			ret = int64(uint32(ret))
+		}
+	case "getpid":
+		ret, desc = int64(os.Getpid()), "getpid()"
+	case "time":
+		ret, desc = l.sysTime(c, a[0], int80)
+	default:
+		return 0, "", false, nil
 	}
-	return 0, "", false, nil
+	return ret, desc, true, nil
 }
 
 func (l *Linux) sysWrite(c *CPU, fd, buf, count uint64) (int64, string) {

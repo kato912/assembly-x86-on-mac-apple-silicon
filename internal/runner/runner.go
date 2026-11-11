@@ -65,7 +65,7 @@ func (p *Program) errorf(key string, args ...any) {
 // message and returns a nil program and the exit code to use.
 func Build(cfg Config) (*Program, int) {
 	if cfg.Stdin == nil {
-		cfg.Stdin = os.Stdin
+		cfg.Stdin = consoleStdin()
 	}
 	if cfg.Stdout == nil {
 		cfg.Stdout = os.Stdout
@@ -152,6 +152,7 @@ func (p *Program) load() {
 	}
 	c := emu.New(p.Bits, mem, p.Linux)
 	p.CPU = c
+	p.Linux.InitBrk(c, p.Image.BrkStart)
 	for _, s := range p.Image.Sections {
 		perm := emu.PermR
 		if s.Write {
