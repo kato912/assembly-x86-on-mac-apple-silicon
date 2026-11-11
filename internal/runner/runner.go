@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
@@ -95,7 +96,7 @@ func Build(cfg Config) (*Program, int) {
 	nasmPath, err := nasm.Find()
 	if err != nil {
 		p.errorf("err.nasmMissing")
-		fmt.Fprintln(cfg.Stderr, nasm.InstallHint())
+		fmt.Fprintln(cfg.Stderr, InstallHint())
 		return nil, ExitNoNasm
 	}
 	p.tmpDir, err = os.MkdirTemp("", "nasmx86-")
@@ -134,6 +135,15 @@ func Build(cfg Config) (*Program, int) {
 	p.Bits = img.Bits
 	p.load()
 	return p, 0
+}
+
+// InstallHint explains how to install nasm on the current OS.
+func InstallHint() string {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		return i18n.T("install." + runtime.GOOS)
+	}
+	return i18n.T("install.linux")
 }
 
 // Close removes temporary files.

@@ -21,6 +21,9 @@ var ErrNotFound = errors.New("nasm not found")
 // installer's folder are often missing from PATH.
 func Find() (string, error) {
 	if p := os.Getenv("NASMX86_NASM"); p != "" {
+		if _, err := os.Stat(p); err != nil {
+			return "", ErrNotFound
+		}
 		return p, nil
 	}
 	if p, err := exec.LookPath("nasm"); err == nil {
@@ -48,18 +51,6 @@ func Find() (string, error) {
 		}
 	}
 	return "", ErrNotFound
-}
-
-// InstallHint explains how to install nasm on the current OS.
-func InstallHint() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return "Install it with Homebrew:\n    brew install nasm\n(no Homebrew? see https://brew.sh)"
-	case "windows":
-		return "Install it with winget:\n    winget install NASM.NASM\nor download the installer from https://www.nasm.us/pub/nasm/releasebuilds/\n(then open a new terminal; nasmx86 also looks in C:\\Program Files\\NASM)"
-	default:
-		return "Install it with your package manager, e.g.\n    sudo apt install nasm      (Debian/Ubuntu)\n    sudo dnf install nasm      (Fedora)\n    sudo pacman -S nasm        (Arch)"
-	}
 }
 
 var versionRE = regexp.MustCompile(`version\s+(\d+)\.(\d+)`)
