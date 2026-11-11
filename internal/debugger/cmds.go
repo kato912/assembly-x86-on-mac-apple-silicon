@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
 )
@@ -80,4 +81,105 @@ func (d *stepper) printCmd(cmd string, args []string) {
 			fmt.Fprintln(d.out, "  "+i18n.T("dbg.pLabel", expr))
 		}
 	}
+}
+
+var flagBits = map[string]uint64{}
+
+func init() {
+	for _, f := range emu.FlagNames {
+		flagBits[strings.ToLower(f.Name)] = f.Bit
+	}
+}
+
+// setCmd implements:
+//
+//	set <register> <expr>        set eax 5, set al 'A', set esp esp+4
+//	set <flag> 0|1               set zf 1
+//	set eip <label|address>      continue somewhere else
+//	set [size] [<addr>] <expr>   set dword [count] 0, set byte [msg] 'h'
+func (d *stepper) setCmd(args []string) {
+	raw := strings.TrimSpace(strings.Join(args, " "))
+	if raw == "" {
+		fmt.Fprintln(d.out, i18n.T("dbg.setUsage"))
+		return
+	}
+	p := d.parser(raw)
+	first := p.word()
+	lfirst := strings.ToLower(first)
+	value := func(rest string) (uint64, bool) {
+		if strings.TrimSpace(rest) == "" {
+			fmt.Fprintln(d.out, i18n.T("dbg.setUsage"))
+			return 0, false
+		}
+		v, err := d.eval(rest)
+		if err != nil {
+			fmt.Fprintln(d.out, err)
+			return 0, false
+		}
+		return v, true
+	}
+	if bit, ok := flagBits[lfirst]; ok {
+		v, ok := value(raw[p.pos:])
+		if !ok {
+			return
+		}
+		if v != 0 {
+			d.c.RFLAGS |= bit
+		} else {
+			d.c.RFLAGS &^= bit
+		}
+		fmt.Fprintf(d.out, "%s = %d   (%s)\n", strings.ToUpper(lfirst), b2i(v != 0), emu.FormatFlags(d.c.RFLAGS))
+		return
+	}
+	if r, ok := regByName(first); ok {
+		v, ok := value(raw[p.pos:])
+		if !ok {
+			return
+		}
+		d.c.SetValue(r, v)
+		fmt.Fprintf(d.out, "%s = %s\n", lfirst, formatValue(d.c.Value(r), regSizeOf(r)))
+		return
+	}
+	if lfirst == "eip" || lfirst == "rip" {
+		v, ok := value(raw[p.pos:])
+		if !ok {
+			return
+		}
+		if !d.c.InCode(v) {
+			fmt.Fprintln(d.out, i18n.T("dbg.notCode", d.p.Addr(v)))
+			return
+		}
+		d.c.RIP = v
+		fmt.Fprintln(d.out, "→ "+d.p.Where(v))
+		return
+	}
+	// Memory: [size] [addr] value
+	size := d.c.Width()
+	p.pos = 0
+	if n, ok := sizeWords[lfirst]; ok {
+		size = n
+		p.word()
+	}
+	addr, err := p.address()
+	if err != nil {
+		fmt.Fprintln(d.out, i18n.T("dbg.setUsage"))
+		return
+	}
+	v, ok := value(raw[p.pos:])
+	if !ok {
+		return
+	}
+	if err := d.c.Mem.Write(addr, size, v); err != nil {
+		fmt.Fprintln(d.out, i18n.T("dbg.setMemFail", d.p.Addr(addr)))
+		return
+	}
+	name := map[int]string{1: "byte", 2: "word", 4: "dword", 8: "qword"}[size]
+	fmt.Fprintf(d.out, "%s [%s] = %s\n", name, d.p.Addr(addr), formatValue(v, size))
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

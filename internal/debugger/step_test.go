@@ -222,3 +222,25 @@ func TestPrintCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestSetCommand(t *testing.T) {
+	// Set eax before "call fact" so the program computes 3! instead of 4!.
+	out, code := session(t, "s\nset eax 3\nset al 'A'\nset al 3\nset zf 1\nset dword [msg] 0x454e4f44\np/s msg\nset byte [fact] 0x90\nset eip 99\nc\nq\n")
+	for _, w := range []string{
+		"eax = 0x00000003 = 3",
+		"al = 0x41 = 65 'A'",
+		"ZF = 1",
+		"dword [0x0804a000] = 0x454e4f44",
+		`"DONE\n"`,
+		"cannot write memory at", // .text is read-only
+		"is not an instruction address",
+		"program exited with code 6",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+	if code != 6 {
+		t.Errorf("exit code %d, want 6 (3!)", code)
+	}
+}

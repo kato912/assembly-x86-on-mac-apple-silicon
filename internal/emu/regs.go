@@ -144,3 +144,8 @@ func nasmRegName(r x86asm.Reg) string {
 
 // Value returns the current value of register r (for the debugger).
 func (c *CPU) Value(r x86asm.Reg) uint64 { return c.getReg(r) }
+
+// SetValue writes register r (for the debugger) with the same rules as an
+// instruction would: writing al keeps the rest of rax, writing eax clears
+// the upper half of rax in 64-bit mode.
+func (c *CPU) SetValue(r x86asm.Reg, v uint64) { c.setReg(r, v) }

@@ -97,6 +97,8 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			d.memCmd(args)
 		case "p", "print", "p/s":
 			d.printCmd(cmd, args)
+		case "set":
+			d.setCmd(args)
 		case "x", "stack", "bt":
 			d.stackCmd(args)
 		case "l", "list":
