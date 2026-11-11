@@ -31,11 +31,15 @@ One-time setup, then every release is just "push a tag".
 
 ## Every release
 
+Versions are `0.x.y` while nasmx86 is in beta (`nasmx86 --version` then says
+"(beta)"): bump `y` for fixes, `x` for new features. Tag `v1.0.0` when it is
+ready to be called stable.
+
 ```bash
 git switch main && git pull
 go test ./...                       # optional local check
-git tag -a v1.0.0 -m "nasmx86 v1.0.0"
-git push origin v1.0.0
+git tag -a v0.5.0 -m "nasmx86 v0.5.0"
+git push origin v0.5.0
 ```
 
 The **Release** workflow (Actions tab) then runs the tests, builds
@@ -55,5 +59,5 @@ curl -fsSL https://raw.githubusercontent.com/kato912/assembly-x86-on-mac-apple-s
 If the Release workflow fails at the Homebrew step, check that the secret
 name is exactly `HOMEBREW_TAP_GITHUB_TOKEN` and the token has Contents
 read/write on `homebrew-tap`. To retry the same version: delete the release
-and the tag on GitHub (`git push --delete origin v1.0.0`, `git tag -d v1.0.0`),
+and the tag on GitHub (`git push --delete origin v0.5.0`, `git tag -d v0.5.0`),
 then tag and push again.
