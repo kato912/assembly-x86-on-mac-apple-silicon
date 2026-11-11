@@ -173,16 +173,20 @@ _start:
     DUMP FL_SHIFTN
 
     LABEL "memory"
+    FLAGS 0x8d7
     shl word [mw], 1
     movzx eax, word [mw]
     DUMP FL_LOGIC
+    FLAGS 0x8d7
     sar dword [md], 4
     mov ebx, [md]
     DUMP FL_SHIFTN
+    FLAGS 0x8d7                 ; (sar left AF undefined; rol keeps it)
     mov cl, 3
     rol dword [md], cl
     mov ebx, [md]
     DUMP FL_ROTN
+    FLAGS 0x8d7
     shrd [md], ebx, 5
     mov edx, [md]
     DUMP FL_SHIFTN
