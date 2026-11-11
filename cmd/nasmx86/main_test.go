@@ -50,3 +50,11 @@ func TestParseArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestVersionString(t *testing.T) {
+	for v, want := range map[string]string{"0.4.1": "nasmx86 0.4.1 (beta)", "1.0.0": "nasmx86 1.0.0", "dev": "nasmx86 dev"} {
+		if got := versionString(v); got != want {
+			t.Errorf("versionString(%q) = %q, want %q", v, got, want)
+		}
+	}
+}

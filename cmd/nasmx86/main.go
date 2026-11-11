@@ -41,13 +41,21 @@ func main() {
 	}
 	switch {
 	case opts.version:
-		fmt.Println("nasmx86", version)
+		fmt.Println(versionString(version))
 		return
 	case opts.help:
 		fmt.Print(i18n.T("usage"))
 		return
 	}
 	os.Exit(run(opts))
+}
+
+// versionString formats the version; 0.x releases are marked as beta.
+func versionString(v string) string {
+	if strings.HasPrefix(v, "0.") {
+		return "nasmx86 " + v + " (beta)"
+	}
+	return "nasmx86 " + v
 }
 
 func run(o *options) int {
