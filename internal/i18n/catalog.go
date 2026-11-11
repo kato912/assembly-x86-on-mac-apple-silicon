@@ -202,6 +202,7 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
 	"dbg.cannotAccess":  {en: "Cannot access memory at address %s", th: "เข้าถึงหน่วยความจำที่แอดเดรส %s ไม่ได้"},
 	"dbg.disasHeader":   {en: "Dump of assembler code for function %s:", th: "โค้ดแอสเซมบลีของฟังก์ชัน %s:"},
 	"dbg.disasEnd":      {en: "End of assembler dump.", th: "จบรายการโค้ด"},
+	"dbg.noDisplays":    {en: "There are no auto-display expressions now.", th: "ยังไม่มีนิพจน์ที่ตั้ง display ไว้"},
 	"dbg.memUsage":      {en: "usage: m <address|label|register> [length]", th: "วิธีใช้: m <แอดเดรส|label|รีจิสเตอร์> [ความยาว]"},
 	"dbg.unreadable":    {en: "memory at %s is not readable", th: "อ่านหน่วยความจำที่ %s ไม่ได้"},
 	"dbg.retAddr":       {en: "return address → line %d", th: "return address → บรรทัด %d"},

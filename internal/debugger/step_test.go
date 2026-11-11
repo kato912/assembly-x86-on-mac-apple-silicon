@@ -415,3 +415,29 @@ func TestGdbExamineAndDisassemble(t *testing.T) {
 		}
 	}
 }
+
+func TestGdbDisplayTbreakUntil(t *testing.T) {
+	out, _ := session(t, "display/i $pc\ndisplay $eax\ninfo display\ns\ntbreak fact\nc\nb 21\ndisable 2\nc\nq\n")
+	for _, w := range []string{
+		"1: x/i $pc\n=> 0x8049000 <_start>:\tmov    eax, 0x4",
+		"2: $eax = 0",
+		"Num Enb Expression\n1:   y  /i $pc\n2:   y  $eax",
+		"2: $eax = 4", // shown again after the step
+		"breakpoint #1 at line 14: cmp eax, 1",
+		"breakpoint #1\n", // the tbreak is hit once ...
+		"breakpoint #2 at line 21: ret",
+		"program exited with code 24", // ... then deleted, and #4 is disabled
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+	if strings.Count(out, "breakpoint #1\n") != 1 {
+		t.Errorf("tbreak should stop only once:\n%s", out)
+	}
+
+	out, code := session(t, "until 9\nq\n")
+	if !strings.Contains(out, "→ line 9: mov ebx, eax") || code != 0 {
+		t.Errorf("until 9:\n%s", out)
+	}
+}

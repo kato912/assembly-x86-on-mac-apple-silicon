@@ -243,13 +243,14 @@ func (d *stepper) finishCmd() {
 
 // watchpoint stops execution when a register or memory location changes.
 type watchpoint struct {
-	n     int
-	desc  string // "dword [counter]" or "ecx"
-	isReg bool
-	reg   x86asm.Reg
-	addr  uint64
-	size  int
-	old   uint64
+	n        int
+	disabled bool
+	desc     string // "dword [counter]" or "ecx"
+	isReg    bool
+	reg      x86asm.Reg
+	addr     uint64
+	size     int
+	old      uint64
 }
 
 func (d *stepper) watchValue(w *watchpoint) (uint64, bool) {
@@ -315,6 +316,10 @@ func (d *stepper) checkWatches(pc uint64) bool {
 	for _, w := range d.watches {
 		v, ok := d.watchValue(w)
 		if !ok || v == w.old {
+			continue
+		}
+		if w.disabled {
+			w.old = v
 			continue
 		}
 		short := func(x uint64) string {

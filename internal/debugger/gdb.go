@@ -221,6 +221,8 @@ func (d *stepper) infoCmd(args []string) {
 		d.infoRegisters(args[1:])
 	case "breakpoints", "break", "b", "watchpoints", "watch":
 		d.infoBreakpoints()
+	case "display":
+		d.infoDisplay()
 	case "frame", "f", "stack", "s":
 		d.btCmd()
 	case "line", "source", "program":
@@ -249,7 +251,11 @@ func (d *stepper) infoBreakpoints() {
 		items = append(items, item{b.n, fmt.Sprintf("%-7d %-14s %-4s %-3s %-10s %s", b.n, kind, disp, enb, fmt.Sprintf("%#08x", a), d.p.Where(a))})
 	}
 	for _, w := range d.watches {
-		items = append(items, item{w.n, fmt.Sprintf("%-7d %-14s %-4s %-3s %-10s %s", w.n, "watchpoint", "keep", "y", "", w.desc)})
+		enb := "y"
+		if w.disabled {
+			enb = "n"
+		}
+		items = append(items, item{w.n, fmt.Sprintf("%-7d %-14s %-4s %-3s %-10s %s", w.n, "watchpoint", "keep", enb, "", w.desc)})
 	}
 	if len(items) == 0 {
 		fmt.Fprintln(d.out, i18n.T("dbg.noBreaks"))
@@ -457,4 +463,155 @@ func (d *stepper) disassemble(expr string) {
 		a += uint64(length)
 	}
 	fmt.Fprintln(d.out, i18n.T("dbg.disasEnd"))
+}
+
+// autoDisplay is an expression shown every time the program stops.
+type autoDisplay struct {
+	n       int
+	format  string
+	expr    string
+	enabled bool
+}
+
+// examineStyle reports whether a display format is an x/ format (i, s, a
+// count or a unit) rather than a print format.
+func examineStyle(format string) bool {
+	return strings.ContainsAny(format, "isbhwg0123456789")
+}
+
+func (d *stepper) showDisplay(a *autoDisplay) {
+	if examineStyle(a.format) {
+		fmt.Fprintf(d.out, "%d: x/%s %s\n", a.n, a.format, a.expr)
+		save := d.xs
+		d.examine(a.format, a.expr)
+		d.xs = save
+		return
+	}
+	v, err := d.eval(a.expr)
+	if err != nil {
+		fmt.Fprintf(d.out, "%d: %s = <%v>\n", a.n, a.expr, err)
+		return
+	}
+	f := byte('d')
+	label := a.expr
+	if a.format != "" {
+		f = a.format[len(a.format)-1]
+		label = "/" + a.format + " " + a.expr
+	}
+	val := d.formatAs(v, d.gdbSize(a.expr), f)
+	if e := strings.ToLower(a.expr); (e == "$eflags" || e == "$rflags") && a.format == "" {
+		val = gdbFlags(v)
+	}
+	fmt.Fprintf(d.out, "%d: %s = %s\n", a.n, label, val)
+}
+
+// showDisplays prints every enabled auto-display (after the program stops).
+func (d *stepper) showDisplays() {
+	for _, a := range d.displays {
+		if a.enabled {
+			d.showDisplay(a)
+		}
+	}
+}
+
+// displayCmd implements display[/FMT] expr (and plain display).
+func (d *stepper) displayCmd(format, expr string) {
+	if strings.TrimSpace(expr) == "" {
+		d.showDisplays()
+		return
+	}
+	d.nextDisplay++
+	a := &autoDisplay{n: d.nextDisplay, format: format, expr: strings.TrimSpace(expr), enabled: true}
+	d.displays = append(d.displays, a)
+	if !d.stopped {
+		d.showDisplay(a)
+	}
+}
+
+// undisplayCmd removes auto-displays (all of them without arguments).
+func (d *stepper) undisplayCmd(args []string) {
+	if len(args) == 0 {
+		d.displays = nil
+		return
+	}
+	for _, arg := range args {
+		n, _ := strconv.Atoi(arg)
+		for i, a := range d.displays {
+			if a.n == n {
+				d.displays = append(d.displays[:i], d.displays[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+func (d *stepper) infoDisplay() {
+	if len(d.displays) == 0 {
+		fmt.Fprintln(d.out, i18n.T("dbg.noDisplays"))
+		return
+	}
+	fmt.Fprintln(d.out, "Auto-display expressions now in effect:\nNum Enb Expression")
+	for _, a := range d.displays {
+		enb := "y"
+		if !a.enabled {
+			enb = "n"
+		}
+		f := ""
+		if a.format != "" {
+			f = "/" + a.format + " "
+		}
+		fmt.Fprintf(d.out, "%d:   %s  %s%s\n", a.n, enb, f, a.expr)
+	}
+}
+
+// enableCmd implements enable/disable [n...] for breakpoints, watchpoints
+// and (with "display") auto-displays.
+func (d *stepper) enableCmd(on bool, args []string) {
+	displays := len(args) > 0 && strings.HasPrefix(strings.ToLower(args[0]), "disp")
+	if displays {
+		args = args[1:]
+	}
+	match := func(n int) bool {
+		if len(args) == 0 {
+			return true
+		}
+		for _, a := range args {
+			if v, err := strconv.Atoi(strings.TrimPrefix(a, "#")); err == nil && v == n {
+				return true
+			}
+		}
+		return false
+	}
+	if displays {
+		for _, a := range d.displays {
+			if match(a.n) {
+				a.enabled = on
+			}
+		}
+		return
+	}
+	for _, b := range d.bps {
+		if match(b.n) {
+			b.enabled = on
+		}
+	}
+	for _, w := range d.watches {
+		if match(w.n) {
+			w.disabled = !on
+		}
+	}
+}
+
+// untilCmd implements until/advance <location>: run to it once.
+func (d *stepper) untilCmd(args []string) {
+	if len(args) == 0 {
+		d.next()
+		return
+	}
+	a, _, err := d.resolve(strings.Join(args, ""))
+	if err != nil {
+		fmt.Fprintln(d.out, err)
+		return
+	}
+	d.run(func() bool { return d.c.RIP == a })
 }

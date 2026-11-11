@@ -44,6 +44,10 @@ type stepper struct {
 	code    int  // nasmx86 exit code once stopped
 	histN   int  // gdb value history number ($1, $2, ...)
 	xs      xState
+
+	displays    []*autoDisplay
+	nextDisplay int
+	moved       bool // the program ran since the last prompt (show displays)
 }
 
 // Interactive runs the --step debugger, reading commands from in and
@@ -54,7 +58,11 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 	for {
 		if !d.stopped {
 			fmt.Fprintln(out, "→ "+d.p.Where(d.c.RIP))
+			if d.moved {
+				d.showDisplays()
+			}
 		}
+		d.moved = false
 		fmt.Fprint(out, "(nasmx86) ")
 		line, err := d.in.ReadString('\n')
 		if err != nil && line == "" {
@@ -71,6 +79,11 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			cmd, format = cmd[:i], cmd[i+1:]
 		}
 		rest := strings.TrimSpace(strings.Join(args, " "))
+		switch cmd {
+		case "", "s", "step", "si", "stepi", "n", "next", "ni", "nexti", "c", "cont", "continue",
+			"finish", "fin", "out", "until", "u", "advance", "run", "start", "starti":
+			d.moved = true
+		}
 		switch cmd {
 		case "", "s", "step", "si":
 			n := 1
@@ -100,6 +113,18 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			}
 		case "b", "break", "br":
 			d.breakCmd(args, false)
+		case "tbreak", "tb":
+			d.breakCmd(args, true)
+		case "until", "u", "advance":
+			if d.alive() {
+				d.untilCmd(args)
+			}
+		case "enable", "disable":
+			d.enableCmd(cmd == "enable", args)
+		case "display":
+			d.displayCmd(format, rest)
+		case "undisplay":
+			d.undisplayCmd(args)
 		case "d", "delete":
 			d.deleteCmd(args)
 		case "r", "reg", "regs", "registers":
