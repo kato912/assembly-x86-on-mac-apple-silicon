@@ -50,6 +50,7 @@ type Program struct {
 	CPU       *emu.CPU
 	Linux     *emu.Linux
 	Source    []string // source file lines (1-based index = line-1)
+	Lines     *nasm.LineMap
 	InitialSP uint64
 	ExitStub  uint64
 
@@ -111,6 +112,11 @@ func Build(cfg Config) (*Program, int) {
 		}
 		p.errorf("err.internal", err)
 		return nil, ExitBuild
+	}
+
+	if f, err := os.Open(res.Listing); err == nil {
+		p.Lines, _ = nasm.ParseListing(f)
+		f.Close()
 	}
 
 	img, err := loader.Link(res.Object)
@@ -227,15 +233,6 @@ func (p *Program) Finish(err error) int {
 	}
 	p.errorf("err.internal", err)
 	return ExitBuild
-}
-
-// Describe turns a fault into a user-facing message.
-func (p *Program) Describe(f *emu.Fault) string {
-	where := fmt.Sprintf("%#x", f.PC)
-	if f.Inst != nil {
-		where += ": " + emu.Disasm(f.Inst, f.PC, nil)
-	}
-	return "nasmx86: " + where + "  →  " + f.Error()
 }
 
 // Run builds and runs a program, returning the exit code.

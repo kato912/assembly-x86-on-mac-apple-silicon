@@ -13,6 +13,15 @@ import (
 // runSource assembles and runs src, returning stdout, stderr and exit code.
 func runSource(t *testing.T, src string, stdin string, args ...string) (string, string, int) {
 	t.Helper()
+	return runSourceCfg(t, src, func(c *Config) {
+		c.Stdin = strings.NewReader(stdin)
+		c.Args = args
+	})
+}
+
+// runSourceCfg is runSource with a hook to adjust the configuration.
+func runSourceCfg(t *testing.T, src string, adjust func(*Config)) (string, string, int) {
+	t.Helper()
 	if _, err := nasm.Find(); err != nil {
 		t.Skip("nasm not installed")
 	}
@@ -22,10 +31,9 @@ func runSource(t *testing.T, src string, stdin string, args ...string) (string, 
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
-	code := Run(Config{
-		Source: path, Args: args, MaxSteps: DefaultMaxSteps,
-		Stdin: strings.NewReader(stdin), Stdout: &out, Stderr: &errb,
-	})
+	cfg := Config{Source: path, MaxSteps: DefaultMaxSteps, Stdin: strings.NewReader(""), Stdout: &out, Stderr: &errb}
+	adjust(&cfg)
+	code := Run(cfg)
 	return out.String(), errb.String(), code
 }
 

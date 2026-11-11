@@ -120,6 +120,10 @@ func (c *CPU) fetch(pc uint64) (*decoded, error) {
 	}
 	inst, err := x86asm.Decode(buf[:n], c.Mode)
 	if err != nil {
+		if c.Mode == 32 && n >= 2 && buf[0] == 0x0f && buf[1] == 0x05 {
+			// SYSCALL does not exist in 32-bit mode; say so instead of "invalid".
+			return nil, &Fault{Kind: FaultSyscallIn32, PC: pc}
+		}
 		return nil, &Fault{Kind: FaultInvalid, PC: pc, Bytes: append([]byte(nil), buf[:n]...)}
 	}
 	h := handlers[inst.Op]
