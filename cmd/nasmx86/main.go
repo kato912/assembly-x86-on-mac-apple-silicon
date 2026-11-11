@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -56,6 +57,13 @@ func run(o *options) int {
 	defer p.Close()
 	var err error
 	switch {
+	case o.step:
+		in := io.Reader(os.Stdin)
+		if tty, terr := debugger.OpenTerminal(); terr == nil {
+			defer tty.Close()
+			in = tty
+		}
+		return debugger.Interactive(debugger.NewSession(p), in, p.Cfg.Stderr)
 	case o.trace:
 		err = debugger.Trace(debugger.NewSession(p), p.Cfg.Stderr)
 	default:
@@ -172,6 +180,8 @@ func (o *options) ownOption(args []string, i *int, value func(*int, string) (str
 		o.cfg.Bits = 64
 	case "--trace":
 		o.trace = true
+	case "--step", "--debug":
+		o.step = true
 	case "--regs":
 		o.cfg.ShowRegs = true
 	case "--th", "--thai":

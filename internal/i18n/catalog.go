@@ -118,4 +118,51 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
 	"hint.int3":          {en: "run with --step to debug interactively", th: "รันด้วย --step เพื่อดีบักทีละคำสั่ง"},
 	"err.maxSteps":       {en: "stopped after %d instructions: the program may be stuck in an infinite loop", th: "หยุดหลังจากรันไป %d คำสั่ง: โปรแกรมอาจติดอยู่ในลูปไม่รู้จบ"},
 	"hint.maxSteps":      {en: "use --max-steps N to allow more (0 = no limit), or --trace to see what repeats", th: "ใช้ --max-steps N เพื่อเพิ่มจำนวน (0 = ไม่จำกัด) หรือใช้ --trace เพื่อดูว่าส่วนไหนวนซ้ำ"},
+
+	// --step debugger
+	"dbg.banner": {en: "nasmx86 debugger: Enter = step one instruction, h = help, q = quit",
+		th: "ดีบักเกอร์ nasmx86: กด Enter = รันทีละคำสั่ง, h = ดูวิธีใช้, q = ออก"},
+	"dbg.help": {en: `commands:
+  Enter, s [n]     step one (or n) instructions
+  n                next: like s, but runs a whole call until it returns
+  c                continue until a breakpoint or the end of the program
+  b <line|label>   set a breakpoint (b alone lists them)
+  d [n|line]       delete breakpoint n (d alone deletes all)
+  r                show registers and flags
+  m <addr> [len]   hex dump of memory, e.g.  m msg   m esp 32   m buf+4 8
+  x [n], stack     show the top n stack entries (default 8)
+  l                list the source around the current line
+  q                quit
+(Ctrl-C stops a running "c" or "n")
+`, th: `คำสั่ง:
+  Enter, s [n]     รันทีละ 1 (หรือ n) คำสั่ง
+  n                next: เหมือน s แต่ถ้าเป็น call จะรันทั้งฟังก์ชันจนกลับมา
+  c                รันต่อจนเจอ breakpoint หรือโปรแกรมจบ
+  b <บรรทัด|label>  ตั้ง breakpoint (พิมพ์ b เฉย ๆ เพื่อดูรายการ)
+  d [n|บรรทัด]      ลบ breakpoint หมายเลข n (d เฉย ๆ = ลบทั้งหมด)
+  r                แสดงรีจิสเตอร์และแฟล็ก
+  m <แอดเดรส> [len] แสดงหน่วยความจำแบบเลขฐานสิบหก เช่น  m msg   m esp 32   m buf+4 8
+  x [n], stack     แสดงข้อมูลบนสแตก n ช่องบนสุด (ค่าเริ่มต้น 8)
+  l                แสดงซอร์สโค้ดรอบบรรทัดปัจจุบัน
+  q                ออก
+(กด Ctrl-C เพื่อหยุดการรันของ "c" หรือ "n")
+`},
+	"dbg.unknown":       {en: "unknown command %q (type h for help)", th: "ไม่รู้จักคำสั่ง %q (พิมพ์ h เพื่อดูวิธีใช้)"},
+	"dbg.finished":      {en: "the program has already finished (exit code %d). Use r, m, x to look around, q to quit.", th: "โปรแกรมจบไปแล้ว (exit code %d) ใช้ r, m, x เพื่อตรวจดู หรือ q เพื่อออก"},
+	"dbg.exited":        {en: "program exited with code %d", th: "โปรแกรมจบด้วย exit code %d"},
+	"dbg.crashed":       {en: "the program stopped with an error. You can still inspect it with r, m, x; q quits.", th: "โปรแกรมหยุดเพราะเกิดข้อผิดพลาด ยังตรวจดูได้ด้วย r, m, x และ q เพื่อออก"},
+	"dbg.interrupted":   {en: "interrupted", th: "หยุดการรันแล้ว"},
+	"dbg.hitBreak":      {en: "breakpoint #%d", th: "ถึง breakpoint #%d"},
+	"dbg.noCode":        {en: "no instructions at or after line %d", th: "ไม่มีคำสั่งที่บรรทัด %d หรือหลังจากนั้น"},
+	"dbg.notCode":       {en: "%s is not an instruction address", th: "%s ไม่ใช่แอดเดรสของคำสั่ง"},
+	"dbg.noBreaks":      {en: "no breakpoints", th: "ยังไม่มี breakpoint"},
+	"dbg.breakSet":      {en: "breakpoint #%d at %s", th: "ตั้ง breakpoint #%d ที่ %s"},
+	"dbg.breaksCleared": {en: "all breakpoints deleted", th: "ลบ breakpoint ทั้งหมดแล้ว"},
+	"dbg.breakDeleted":  {en: "breakpoint #%d deleted", th: "ลบ breakpoint #%d แล้ว"},
+	"dbg.noSuchBreak":   {en: "no breakpoint %s", th: "ไม่มี breakpoint %s"},
+	"dbg.badExpr":       {en: "cannot understand %q (use a label, register, or number like 0x804a000)", th: "ไม่เข้าใจ %q (ใช้ label, ชื่อรีจิสเตอร์ หรือตัวเลข เช่น 0x804a000)"},
+	"dbg.memUsage":      {en: "usage: m <address|label|register> [length]", th: "วิธีใช้: m <แอดเดรส|label|รีจิสเตอร์> [ความยาว]"},
+	"dbg.unreadable":    {en: "memory at %s is not readable", th: "อ่านหน่วยความจำที่ %s ไม่ได้"},
+	"dbg.retAddr":       {en: "return address → line %d", th: "return address → บรรทัด %d"},
+	"dbg.retMain":       {en: "return address → exit", th: "return address → exit"},
 }
