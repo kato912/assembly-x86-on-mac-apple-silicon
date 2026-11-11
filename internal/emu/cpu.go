@@ -231,7 +231,9 @@ func Disasm(in *x86asm.Inst, pc uint64, sym func(uint64) (string, uint64)) strin
 	for i := 8; i <= 15; i++ {
 		s = strings.ReplaceAll(s, "r"+itoa(i)+"l", "r"+itoa(i)+"d")
 	}
-	return s
+	// x86asm writes an immediate that matches a label as "$label" (AT&T
+	// style); NASM writes just the label.
+	return strings.ReplaceAll(s, "$", "")
 }
 
 func itoa(i int) string {

@@ -1,6 +1,10 @@
 package emu
 
-import "testing"
+import (
+	"testing"
+
+	"golang.org/x/arch/x86/x86asm"
+)
 
 func TestSubRegisters64(t *testing.T) {
 	c := run(t, 64, `
@@ -232,4 +236,20 @@ start:
 	expect(t, c, RBX, 0x1111)
 	expect(t, c, RDX, 0x2222)
 	expect(t, c, RCX, 0x12345)
+}
+
+func TestDisasmLabelImmediate(t *testing.T) {
+	in, err := x86asm.Decode([]byte{0xb9, 0x00, 0xa0, 0x04, 0x08}, 32) // mov ecx, 0x804a000
+	if err != nil {
+		t.Fatal(err)
+	}
+	sym := func(a uint64) (string, uint64) {
+		if a == 0x804a000 {
+			return "msg", a
+		}
+		return "", 0
+	}
+	if got := Disasm(&in, 0x8049000, sym); got != "mov ecx, msg" {
+		t.Errorf("got %q", got)
+	}
 }
