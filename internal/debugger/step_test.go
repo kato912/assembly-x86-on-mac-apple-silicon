@@ -52,7 +52,7 @@ func TestStepCommands(t *testing.T) {
 		"esp=0x",                    // call pushes
 		"breakpoint #1 at line 14: cmp eax, 1",
 		"breakpoint #2 at line 23: mov eax, 1", // label-only line -> next instruction
-		"breakpoint #1\n",                       // hit after c
+		"breakpoint #1\n",                      // hit after c
 		"return address → line 9",
 		"argc",
 		"eax = 0x00000003 (3)", // r: second entry into fact
