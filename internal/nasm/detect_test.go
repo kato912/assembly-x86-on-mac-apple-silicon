@@ -1,6 +1,10 @@
 package nasm
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestDetectBits(t *testing.T) {
 	cases := []struct {
@@ -24,5 +28,20 @@ func TestDetectBits(t *testing.T) {
 		if got, why := DetectBits([]byte(c.src)); got != c.bits {
 			t.Errorf("%q: got %d (%s), want %d", c.src, got, why, c.bits)
 		}
+	}
+}
+
+func TestDetectBitsFollowsInclude(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "io.inc"), []byte("print:\n  mov eax, 4\n  int 0x80\n  ret\n"), 0o644)
+	main := filepath.Join(dir, "main.asm")
+	src := []byte("%include \"io.inc\"\n_start: mov eax, 1\n call print\n")
+	if bits, why := DetectBitsFile(main, src, nil); bits != 32 {
+		t.Errorf("got %d (%s)", bits, why)
+	}
+	// The main file's own evidence still wins over a weaker hint in the include.
+	src = []byte("%include \"io.inc\"\nmov rax, 60\nsyscall\n")
+	if bits, _ := DetectBitsFile(main, src, nil); bits != 64 {
+		t.Errorf("got %d", bits)
 	}
 }

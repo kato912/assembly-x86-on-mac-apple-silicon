@@ -3,6 +3,8 @@ package nasm
 import (
 	"bufio"
 	"bytes"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -22,50 +24,92 @@ var (
 // `default rel`, then `syscall` (64) vs `int 0x80` (32). With no evidence at
 // all it defaults to 64-bit.
 func DetectBits(src []byte) (bits int, reason string) {
-	var saw64reg, sawSyscall, saw80 string
+	var e evidence
+	e.scan(src, "", nil, 0)
+	return e.decide()
+}
+
+// DetectBitsFile is DetectBits for a file on disk; it also looks inside
+// files pulled in with %include (searched next to the source and in dirs).
+func DetectBitsFile(path string, src []byte, dirs []string) (bits int, reason string) {
+	var e evidence
+	e.scan(src, filepath.Dir(path), dirs, 0)
+	return e.decide()
+}
+
+type evidence struct {
+	bits                  int
+	bitsWhy               string
+	reg64, syscall, int80 string
+	seen                  map[string]bool
+}
+
+func (e *evidence) decide() (int, string) {
+	switch {
+	case e.bits != 0:
+		return e.bits, e.bitsWhy
+	case e.reg64 != "":
+		return 64, e.reg64
+	case e.syscall != "":
+		return 64, e.syscall
+	case e.int80 != "":
+		return 32, e.int80
+	}
+	return 64, "default"
+}
+
+func (e *evidence) scan(src []byte, dir string, dirs []string, depth int) {
 	sc := bufio.NewScanner(bytes.NewReader(src))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
-		line := strings.ToLower(stripComment(sc.Text()))
-		t := strings.TrimSpace(line)
+		if e.bits != 0 {
+			return
+		}
+		raw := stripComment(sc.Text())
+		t := strings.TrimSpace(strings.ToLower(raw))
 		if t == "" {
 			continue
 		}
 		if m := bitsRE.FindStringSubmatch(t); m != nil {
-			v := m[1] + m[2]
-			switch v {
-			case "64":
-				return 64, "bits 64"
-			case "32":
-				return 32, "bits 32"
-			default:
-				return 16, "bits 16"
-			}
+			e.bits, e.bitsWhy = map[string]int{"16": 16, "32": 32, "64": 64}[m[1]+m[2]], "bits "+m[1]+m[2]
+			return
+		}
+		if m := includeRE.FindStringSubmatch(strings.TrimSpace(raw)); m != nil && depth < 4 && dir != "" {
+			e.include(strings.TrimSpace(m[1]), dir, dirs, depth)
+			continue
 		}
 		code := stripStrings(t)
-		if saw64reg == "" {
+		if e.reg64 == "" {
 			if defRelRE.MatchString(code) {
-				saw64reg = "default rel"
+				e.reg64 = "default rel"
 			} else if m := reg64RE.FindString(code); m != "" {
-				saw64reg = "uses register " + m
+				e.reg64 = "uses register " + m
 			}
 		}
-		if sawSyscall == "" && sysRE.MatchString(code) {
-			sawSyscall = "uses syscall"
+		if e.syscall == "" && sysRE.MatchString(code) {
+			e.syscall = "uses syscall"
 		}
-		if saw80 == "" && int80RE.MatchString(code) {
-			saw80 = "uses int 0x80"
+		if e.int80 == "" && int80RE.MatchString(code) {
+			e.int80 = "uses int 0x80"
 		}
 	}
-	switch {
-	case saw64reg != "":
-		return 64, saw64reg
-	case sawSyscall != "":
-		return 64, sawSyscall
-	case saw80 != "":
-		return 32, saw80
+}
+
+func (e *evidence) include(name, dir string, dirs []string, depth int) {
+	for _, d := range append([]string{dir}, dirs...) {
+		p := filepath.Join(d, name)
+		if e.seen[p] {
+			return
+		}
+		if b, err := os.ReadFile(p); err == nil {
+			if e.seen == nil {
+				e.seen = map[string]bool{}
+			}
+			e.seen[p] = true
+			e.scan(b, filepath.Dir(p), dirs, depth+1)
+			return
+		}
 	}
-	return 64, "default"
 }
 
 // stripComment removes a ';' comment, respecting quoted strings.

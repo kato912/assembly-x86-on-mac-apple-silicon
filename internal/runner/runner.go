@@ -87,7 +87,7 @@ func Build(cfg Config) (*Program, int) {
 	bits := cfg.Bits
 	if bits == 0 {
 		var why string
-		bits, why = nasm.DetectBits(src)
+		bits, why = nasm.DetectBitsFile(cfg.Source, src, includeDirs(cfg.NasmArgs))
 		if bits == 16 {
 			p.errorf("err.bits16", why)
 			return nil, ExitBuild
@@ -145,6 +145,23 @@ func InstallHint() string {
 		return i18n.T("install." + runtime.GOOS)
 	}
 	return i18n.T("install.linux")
+}
+
+// includeDirs extracts -I/-i directories from nasm arguments.
+func includeDirs(args []string) []string {
+	var dirs []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "-I" || a == "-i" {
+			if i+1 < len(args) {
+				dirs = append(dirs, args[i+1])
+				i++
+			}
+		} else if strings.HasPrefix(a, "-I") || strings.HasPrefix(a, "-i") {
+			dirs = append(dirs, a[2:])
+		}
+	}
+	return dirs
 }
 
 // Close removes temporary files.
