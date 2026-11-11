@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/arch/x86/x86asm"
+
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
@@ -233,4 +235,93 @@ func (d *stepper) finishCmd() {
 		reg := emu.RegName(emu.RAX, d.p.Bits)
 		fmt.Fprintln(d.out, i18n.T("dbg.returned", fn, reg, d.p.ValueText(emu.RAX, d.c.R[emu.RAX])))
 	}
+}
+
+// watchpoint stops execution when a register or memory location changes.
+type watchpoint struct {
+	n     int
+	desc  string // "dword [counter]" or "ecx"
+	isReg bool
+	reg   x86asm.Reg
+	addr  uint64
+	size  int
+	old   uint64
+}
+
+func (d *stepper) watchValue(w *watchpoint) (uint64, bool) {
+	if w.isReg {
+		return d.c.Value(w.reg), true
+	}
+	v, err := d.readMem(w.addr, w.size)
+	return v, err == nil
+}
+
+// watchCmd implements "watch <register>" and "watch [size] <address>",
+// e.g. watch ecx, watch counter, watch byte [buf+3]. Alone it lists them.
+func (d *stepper) watchCmd(args []string) {
+	raw := strings.TrimSpace(strings.Join(args, " "))
+	if raw == "" {
+		if len(d.watches) == 0 {
+			fmt.Fprintln(d.out, i18n.T("dbg.noWatches"))
+		}
+		for _, w := range d.watches {
+			v, _ := d.watchValue(w)
+			fmt.Fprintf(d.out, "  #%d  %s = %s\n", w.n, w.desc, formatValue(v, w.size))
+		}
+		return
+	}
+	w := &watchpoint{size: d.c.Width()}
+	if r, ok := regByName(raw); ok {
+		w.isReg, w.reg, w.size, w.desc = true, r, regSizeOf(r), strings.ToLower(raw)
+	} else {
+		p := d.parser(raw)
+		sizeName := map[int]string{1: "byte", 2: "word", 4: "dword", 8: "qword"}[w.size]
+		if n, ok := sizeWords[strings.ToLower(p.word())]; ok {
+			w.size, sizeName = n, strings.ToLower(raw[:p.pos])
+		} else {
+			p.pos = 0
+		}
+		rest := strings.TrimSpace(raw[p.pos:])
+		inner := strings.TrimSuffix(strings.TrimPrefix(rest, "["), "]")
+		addr, err := d.eval(inner)
+		if err != nil {
+			fmt.Fprintln(d.out, err)
+			fmt.Fprintln(d.out, i18n.T("dbg.watchUsage"))
+			return
+		}
+		w.addr = addr
+		w.desc = sizeName + " [" + strings.TrimSpace(inner) + "]"
+	}
+	v, ok := d.watchValue(w)
+	if !ok {
+		fmt.Fprintln(d.out, i18n.T("dbg.unreadable", d.p.Addr(w.addr)))
+		return
+	}
+	w.old = v
+	d.nextBP++
+	w.n = d.nextBP
+	d.watches = append(d.watches, w)
+	fmt.Fprintln(d.out, i18n.T("dbg.watchSet", w.n, w.desc, formatValue(v, w.size)))
+}
+
+// checkWatches reports every watchpoint whose value changed during the
+// instruction at pc. It returns true if any did.
+func (d *stepper) checkWatches(pc uint64) bool {
+	hit := false
+	for _, w := range d.watches {
+		v, ok := d.watchValue(w)
+		if !ok || v == w.old {
+			continue
+		}
+		short := func(x uint64) string {
+			if w.size < 8 {
+				x &= 1<<(8*uint(w.size)) - 1
+			}
+			return fmt.Sprintf("%s (%d)", runner.Hex(x, w.size), x)
+		}
+		fmt.Fprintln(d.out, i18n.T("dbg.watchHit", w.n, w.desc, short(w.old), short(v), d.p.Where(pc)))
+		w.old = v
+		hit = true
+	}
+	return hit
 }

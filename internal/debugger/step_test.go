@@ -63,7 +63,7 @@ func TestStepCommands(t *testing.T) {
 		"64 6f 6e 65 0a",       // m msg
 		"<msg>",
 		"→   14      cmp eax, 1", // l marks the current line
-		"all breakpoints deleted",
+		"all breakpoints and watchpoints deleted",
 	} {
 		if !strings.Contains(out, w) {
 			t.Errorf("output lacks %q:\n%s", w, out)
@@ -285,5 +285,41 @@ inner:
 		if !strings.Contains(out.String(), w) {
 			t.Errorf("output lacks %q:\n%s", w, out.String())
 		}
+	}
+}
+
+func TestWatchpoints(t *testing.T) {
+	p, _, _ := build(t, `
+section .data
+counter dd 0
+section .text
+global _start
+_start:
+    mov ecx, 3
+again:
+    add dword [counter], 10
+    loop again
+    mov ebx, [counter]
+    mov eax, 1
+    int 0x80
+`, "")
+	var out bytes.Buffer
+	code := Interactive(NewSession(p), strings.NewReader("watch counter\nwatch ecx\nwatch\nc\nc\nd 2\nc\nc\nc\nq\n"), &out)
+	for _, w := range []string{
+		"watchpoint #1: dword [counter] (now 0x00000000 = 0)",
+		"watchpoint #2: ecx (now 0x00000000 = 0)",
+		"watchpoint #2: ecx changed 0x00000000 (0) → 0x00000003 (3)\n    by line 7: mov ecx, 3",
+		"watchpoint #1: dword [counter] changed 0x00000000 (0) → 0x0000000a (10)\n    by line 9: add dword [counter], 10",
+		"watchpoint #2 deleted",
+		"changed 0x0000000a (10) → 0x00000014 (20)",
+		"changed 0x00000014 (20) → 0x0000001e (30)",
+		"program exited with code 30",
+	} {
+		if !strings.Contains(out.String(), w) {
+			t.Errorf("output lacks %q:\n%s", w, out.String())
+		}
+	}
+	if code != 30 {
+		t.Errorf("exit code %d", code)
 	}
 }

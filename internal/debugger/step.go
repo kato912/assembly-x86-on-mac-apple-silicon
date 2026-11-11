@@ -37,7 +37,8 @@ type stepper struct {
 	out io.Writer
 
 	bps     map[uint64]int // address -> breakpoint number
-	nextBP  int
+	watches []*watchpoint
+	nextBP  int  // shared numbering for breakpoints and watchpoints
 	stopped bool // the program has exited or crashed
 	exited  bool // it exited normally (so there is no call stack left)
 	code    int  // nasmx86 exit code once stopped
@@ -78,6 +79,8 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 				}
 				if r.Err != nil {
 					d.finish(r.Err)
+				} else if d.checkWatches(r.PC) {
+					break
 				}
 			}
 		case "n", "next", "ni":
@@ -100,6 +103,8 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			d.printCmd(cmd, args)
 		case "set":
 			d.setCmd(args)
+		case "watch", "w":
+			d.watchCmd(args)
 		case "x", "stack":
 			d.stackCmd(args)
 		case "bt", "backtrace", "where":
@@ -166,8 +171,12 @@ func (d *stepper) run(stop func() bool) {
 				return
 			}
 		}
-		if r := d.s.Step(); r.Err != nil {
+		r := d.s.Step()
+		if r.Err != nil {
 			d.finish(r.Err)
+			return
+		}
+		if d.checkWatches(r.PC) {
 			return
 		}
 	}
@@ -183,6 +192,8 @@ func (d *stepper) next() {
 		}
 		if r.Err != nil {
 			d.finish(r.Err)
+		} else {
+			d.checkWatches(r.PC)
 		}
 		return
 	}
@@ -259,6 +270,7 @@ func (d *stepper) breakCmd(args []string) {
 func (d *stepper) deleteCmd(args []string) {
 	if len(args) == 0 {
 		d.bps = map[uint64]int{}
+		d.watches = nil
 		fmt.Fprintln(d.out, i18n.T("dbg.breaksCleared"))
 		return
 	}
@@ -268,6 +280,13 @@ func (d *stepper) deleteCmd(args []string) {
 			if b == n {
 				delete(d.bps, a)
 				fmt.Fprintln(d.out, i18n.T("dbg.breakDeleted", n))
+				return
+			}
+		}
+		for i, w := range d.watches {
+			if w.n == n {
+				d.watches = append(d.watches[:i], d.watches[i+1:]...)
+				fmt.Fprintln(d.out, i18n.T("dbg.watchDeleted", n))
 				return
 			}
 		}
