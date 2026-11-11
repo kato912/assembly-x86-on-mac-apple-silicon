@@ -207,7 +207,7 @@ _start:
 }
 
 func TestPrintCommand(t *testing.T) {
-	out, _ := session(t, "s\np eax\np/s msg\np msg\np byte [msg]\np [esp]\np -1\np al\nq\n")
+	out, _ := session(t, "s\np eax\np/s msg\np msg\np byte [msg]\np [esp]\np -1\np al\np/s 0\nq\n")
 	for _, w := range []string{
 		"eax = 0x00000004 = 4",
 		`= "done\n" (5 bytes)`,
@@ -216,6 +216,7 @@ func TestPrintCommand(t *testing.T) {
 		"[esp] = 0x00000001 = 1",
 		"-1 = 0xffffffff = 4294967295 (signed -1)",
 		"al = 0x04 = 4",
+		"memory at 0x00000000 is not readable",
 	} {
 		if !strings.Contains(out, w) {
 			t.Errorf("output lacks %q:\n%s", w, out)

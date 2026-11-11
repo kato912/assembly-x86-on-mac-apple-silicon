@@ -69,6 +69,10 @@ func (d *stepper) printCmd(cmd string, args []string) {
 	}
 	if cmd == "p/s" {
 		b := d.c.Mem.Peek(v, 256)
+		if len(b) == 0 {
+			fmt.Fprintln(d.out, i18n.T("dbg.unreadable", d.p.Addr(v)))
+			return
+		}
 		n := 0
 		for n < len(b) && b[n] != 0 {
 			n++
