@@ -41,12 +41,14 @@ git push origin v1.0.0
 The **Release** workflow (Actions tab) then runs the tests, builds
 darwin/arm64, darwin/amd64, linux/amd64, linux/arm64 and windows/amd64,
 uploads them with `checksums.txt` to a GitHub Release, and commits
-`Formula/nasmx86.rb` to `kato912/homebrew-tap`.
+`Casks/nasmx86.rb` to `kato912/homebrew-tap`. (It is a cask, not a formula:
+Homebrew requires an up-to-date Xcode to install a formula without bottles,
+but not to install a cask.)
 
 ## Check the release
 
 ```bash
-brew update && brew install kato912/tap/nasmx86 && nasmx86 --version
+brew update && brew install kato912/tap/nasmx86 && nasmx86 --version   # macOS
 curl -fsSL https://raw.githubusercontent.com/kato912/assembly-x86-on-mac-apple-silicon/main/install.sh | sh
 ```
 

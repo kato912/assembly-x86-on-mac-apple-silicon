@@ -26,15 +26,17 @@ line 14: div ecx  →  division overflow: edx:eax = 0x00000009:0x00000064 divide
 
 ## Install
 
-### macOS (and Linux) with Homebrew — recommended
+### macOS with Homebrew — recommended
 
 ```bash
 brew install kato912/tap/nasmx86
 ```
 
-This also installs `nasm`. No Homebrew account or GitHub login is needed.
+This also installs `nasm`. No Homebrew account or GitHub login is needed, and
+it works even if Xcode is outdated or not installed. Update later with
+`brew upgrade nasmx86`.
 
-### macOS / Linux without Homebrew
+### Linux (or macOS without Homebrew)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kato912/assembly-x86-on-mac-apple-silicon/main/install.sh | sh

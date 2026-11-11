@@ -26,15 +26,16 @@ $ nasmx86 --th avg.asm
 
 ## การติดตั้ง
 
-### macOS (และ Linux) ด้วย Homebrew — แนะนำ
+### macOS ด้วย Homebrew — แนะนำ
 
 ```bash
 brew install kato912/tap/nasmx86
 ```
 
 คำสั่งนี้ติดตั้ง `nasm` ให้ด้วย ไม่ต้องมีบัญชี Homebrew หรือล็อกอิน GitHub
+และใช้ได้แม้ Xcode จะเก่าหรือไม่ได้ติดตั้ง อัปเดตภายหลังด้วย `brew upgrade nasmx86`
 
-### macOS / Linux แบบไม่ใช้ Homebrew
+### Linux (หรือ macOS ที่ไม่ใช้ Homebrew)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kato912/assembly-x86-on-mac-apple-silicon/main/install.sh | sh
