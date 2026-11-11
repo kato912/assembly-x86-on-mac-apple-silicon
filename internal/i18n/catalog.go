@@ -172,6 +172,8 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
 	"dbg.breakDeleted":  {en: "breakpoint #%d deleted", th: "ลบ breakpoint #%d แล้ว"},
 	"dbg.noSuchBreak":   {en: "no breakpoint %s", th: "ไม่มี breakpoint %s"},
 	"dbg.badExpr":       {en: "cannot understand %q (use a label, register, or number like 0x804a000)", th: "ไม่เข้าใจ %q (ใช้ label, ชื่อรีจิสเตอร์ หรือตัวเลข เช่น 0x804a000)"},
+	"dbg.pUsage":        {en: "usage: p <expression>   e.g.  p eax   p [count]   p dword [arr + ecx*4]   p/s msg", th: "วิธีใช้: p <นิพจน์>   เช่น  p eax   p [count]   p dword [arr + ecx*4]   p/s msg"},
+	"dbg.pLabel":        {en: "(%[1]s is an address; to see the value stored there use  p [%[1]s]  or  p dword [%[1]s])", th: "(%[1]s คือแอดเดรส ถ้าจะดูค่าที่เก็บไว้ให้ใช้  p [%[1]s]  หรือ  p dword [%[1]s])"},
 	"dbg.memUsage":      {en: "usage: m <address|label|register> [length]", th: "วิธีใช้: m <แอดเดรส|label|รีจิสเตอร์> [ความยาว]"},
 	"dbg.unreadable":    {en: "memory at %s is not readable", th: "อ่านหน่วยความจำที่ %s ไม่ได้"},
 	"dbg.retAddr":       {en: "return address → line %d", th: "return address → บรรทัด %d"},

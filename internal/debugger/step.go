@@ -95,6 +95,8 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			fmt.Fprint(out, d.p.FormatRegs())
 		case "m", "mem", "memory":
 			d.memCmd(args)
+		case "p", "print", "p/s":
+			d.printCmd(cmd, args)
 		case "x", "stack", "bt":
 			d.stackCmd(args)
 		case "l", "list":

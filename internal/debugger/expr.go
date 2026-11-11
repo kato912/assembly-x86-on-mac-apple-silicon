@@ -249,3 +249,15 @@ func (d *stepper) readMem(addr uint64, size int) (uint64, error) {
 	}
 	return v, nil
 }
+
+func regSizeOf(r x86asm.Reg) int {
+	switch {
+	case r >= x86asm.AL && r <= x86asm.R15B:
+		return 1
+	case r >= x86asm.AX && r <= x86asm.R15W:
+		return 2
+	case r >= x86asm.EAX && r <= x86asm.R15L:
+		return 4
+	}
+	return 8
+}

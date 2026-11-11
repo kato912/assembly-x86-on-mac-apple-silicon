@@ -205,3 +205,20 @@ _start:
 		}
 	}
 }
+
+func TestPrintCommand(t *testing.T) {
+	out, _ := session(t, "s\np eax\np/s msg\np msg\np byte [msg]\np [esp]\np -1\np al\nq\n")
+	for _, w := range []string{
+		"eax = 0x00000004 = 4",
+		`= "done\n" (5 bytes)`,
+		"(msg is an address; to see the value stored there use  p [msg]",
+		"byte [msg] = 0x64 = 100 'd'",
+		"[esp] = 0x00000001 = 1",
+		"-1 = 0xffffffff = 4294967295 (signed -1)",
+		"al = 0x04 = 4",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+}
