@@ -210,6 +210,17 @@ func (l *Linux) sysLseek(fd int, off int64, whence int) (int64, string) {
 	return pos, desc
 }
 
+// CloseAll closes every file the program left open, as the kernel does
+// when a process exits (stdin/stdout/stderr are not closed).
+func (l *Linux) CloseAll() {
+	for fd, e := range l.files {
+		if e.f != nil {
+			e.f.Close()
+			delete(l.files, fd)
+		}
+	}
+}
+
 // InitBrk sets the start of the program break (end of .bss, page aligned).
 func (l *Linux) InitBrk(c *CPU, start uint64) {
 	l.brkStart, l.brkCur = start, start

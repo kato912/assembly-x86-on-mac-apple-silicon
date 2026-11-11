@@ -164,8 +164,12 @@ func includeDirs(args []string) []string {
 	return dirs
 }
 
-// Close removes temporary files.
+// Close releases the program's resources: files it left open (as process
+// exit would) and nasmx86's temporary files.
 func (p *Program) Close() {
+	if p.Linux != nil {
+		p.Linux.CloseAll()
+	}
 	if p.tmpDir != "" {
 		os.RemoveAll(p.tmpDir)
 		p.tmpDir = ""

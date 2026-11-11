@@ -3,6 +3,7 @@ package emu
 import (
 	"bytes"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -111,5 +112,38 @@ func TestInitialStack(t *testing.T) {
 		if null, _ := c.Mem.Read(argv+2*uint64(w), w); null != 0 {
 			t.Errorf("%d: argv not NULL terminated", bits)
 		}
+	}
+}
+
+func TestCloseAllOnExit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f.txt")
+	c, l, _ := linuxMachine(t, 64, `
+	default rel
+	mov eax, 2              ; open(path, O_WRONLY|O_CREAT, 0644) and never close it
+	lea rdi, [path]
+	mov esi, 0x41
+	mov edx, 0o644
+	syscall
+	mov rbx, rax
+	jmp over
+path: db "`+path+`", 0
+over:
+`)
+	if err := c.Run(); err != nil {
+		if ex, ok := err.(*Exit); !ok || !ex.ByHalt {
+			t.Fatal(err)
+		}
+	}
+	if fd := int(c.R[RBX]); fd < 3 || l.files[fd] == nil {
+		t.Fatalf("open returned %d", int64(c.R[RBX]))
+	}
+	l.CloseAll()
+	for fd, e := range l.files {
+		if e.f != nil {
+			t.Errorf("fd %d still open", fd)
+		}
+	}
+	if l.files[1] == nil {
+		t.Errorf("stdout must stay open")
 	}
 }
