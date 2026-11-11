@@ -50,18 +50,19 @@ changelog:
   filters:
     exclude: ["^Merge"]
 
-# "brews" generates a Homebrew *formula* (Formula/nasmx86.rb). GoReleaser
-# marks it deprecated in favour of casks, but a formula can depend on the
-# nasm formula, works with Homebrew on Linux too, and is not quarantined by
-# macOS Gatekeeper, so it is kept on purpose (it is supported throughout v2).
-brews:
+# Homebrew cask (Casks/nasmx86.rb in kato912/homebrew-tap). A cask, unlike
+# a formula, never counts as a build from source, so Homebrew does not demand
+# an up-to-date Xcode or Command Line Tools just to copy a prebuilt binary.
+# Users still type: brew install kato912/tap/nasmx86
+homebrew_casks:
   - name: nasmx86
     ids: [unix]
+    binaries: [nasmx86]
     repository:
       owner: kato912
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: "https://github.com/kato912/assembly-x86-on-mac-apple-silicon"
     description: "Run 32/64-bit x86 Linux NASM programs anywhere, no VM needed"
     commit_author:
@@ -69,22 +70,15 @@ brews:
       email: 89004444+kato912@users.noreply.github.com
     commit_msg_template: "nasmx86 {{ .Tag }}"
     dependencies:
-      - name: nasm
-    install: |
-      bin.install "nasmx86"
-      pkgshare.install Dir["examples/*"]
+      - formula: nasm
+    hooks:
+      post:
+        # The binary is ad-hoc signed but not notarized: clear the
+        # quarantine flag so Gatekeeper does not block it.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/nasmx86"]
+          end
     caveats: |
-      Example programs are in:
-        #{opt_pkgshare}
-      Try:  nasmx86 #{opt_pkgshare}/hello32.asm
-    test: |
-      (testpath/"t.asm").write <<~EOS
-        section .text
-        global _start
-        _start:
-          mov eax, 1
-          mov ebx, 7
-          int 0x80
-      EOS
-      system bin/"nasmx86", "--version"
-      shell_output("#{bin}/nasmx86 #{testpath}/t.asm", 7) # exit status must be 7
+      Example programs: https://github.com/kato912/assembly-x86-on-mac-apple-silicon/tree/main/examples
+      Try:  nasmx86 hello.asm   (nasmx86 --help for options, --th for Thai)
