@@ -194,6 +194,27 @@ $ nasmx86 --step --th examples/factorial32.asm
 ระหว่างดีบัก โปรแกรมยังรับ input ได้ตามปกติ (คำสั่งดีบักอ่านจากเทอร์มินัลโดยตรง
 แม้ stdin ของโปรแกรมจะถูก redirect)
 
+#### เคยใช้ gdb มาก่อน?
+
+บน Mac ชิป Apple Silicon ใช้ gdb ดีบักโปรแกรม x86 ไม่ได้ `--step` จึงรับคำสั่งแบบ gdb ที่ชีทแลปใช้ด้วย
+พิมพ์ตามชีทได้เลย:
+
+| gdb (ในชีทแลป) | ใช้ใน `nasmx86 --step` ได้ไหม |
+|---|---|
+| `break _start`, `break *0x8049005`, `tbreak`, `run`, `start`, `kill` | ✅ (พิมพ์ `run` อีกครั้งเพื่อเริ่มโปรแกรมใหม่) |
+| `stepi`, `nexti`, `stepi 5`, `continue`, `finish`, `until 20`, `advance loop` | ✅ |
+| `info registers`, `info registers eax`, `i r` | ✅ หน้าตาเหมือน gdb รวมถึง `eflags [ PF ZF IF ]` |
+| `print $eax`, `p/x $eax`, `p/t $al` (ฐานสอง), `p/c`, `p (int)count`, `p *(int*)&arr` | ✅ |
+| `x/4xw $esp`, `x/s &msg`, `x/16xb msg`, `x/5i $pc` | ✅ |
+| `display/i $pc`, `display $eax`, `undisplay`, `info display` | ✅ แสดงทุกครั้งที่รันคำสั่ง |
+| `disassemble`, `backtrace`, `info breakpoints`, `enable`/`disable`, `delete` | ✅ |
+| `set $eax = 5`, `set var (int)count = 0`, `set {char}&msg = 'H'` | ✅ |
+| `set disassembly-flavor intel` | ใส่ได้ (แสดงผลเป็น syntax แบบ Intel/NASM เสมอ) |
+| `layout regs` / `layout asm` (TUI) | ❌ ใช้ `display/i $pc` และ `display $eax` แทน |
+
+คำสั่งสั้นแบบเดิม (`s`, `n`, `c`, `r` ดูรีจิสเตอร์, `m`, `x` ดูสแตก) ยังใช้ได้เหมือนเดิม
+หมายเหตุ: ใน nasmx86 `r` คือดูรีจิสเตอร์ ส่วน `r` ของ gdb (run) ให้พิมพ์ `run`
+
 ตัวอย่าง: ทำไม recursion คืนค่าผิด?
 
 ```

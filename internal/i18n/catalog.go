@@ -150,6 +150,14 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
   l                  list the source around the current line
   q                  quit
 (Ctrl-C stops a running c, n or finish)
+
+gdb commands work too, so lab sheets written for gdb can be followed as is:
+  break/tbreak <loc|*addr>, run, start, kill, stepi/nexti [n], continue,
+  until/advance <loc>, info registers [eax ...], info breakpoints,
+  p/x p/d p/u p/t p/c p/o <expr>  ($eax, $pc, &msg, (int)count, *(int*)p),
+  x/NFU <addr> (x/4xw $esp, x/s &msg, x/16xb msg, x/5i $pc),
+  display[/FMT] <expr>, undisplay, info display, disassemble [func],
+  enable/disable [n], set $eax = 5, set var (int)count = 0, backtrace, finish
 `, th: `คำสั่ง:
   Enter, s [n]       รันทีละ 1 (หรือ n) คำสั่ง
   n                  next: เหมือน s แต่ถ้าเป็น call จะรันทั้งฟังก์ชันจนกลับมา
@@ -170,6 +178,14 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
   l                  แสดงซอร์สโค้ดรอบบรรทัดปัจจุบัน
   q                  ออก
 (กด Ctrl-C เพื่อหยุดการรันของ c, n หรือ finish)
+
+คำสั่งแบบ gdb ก็ใช้ได้ ทำตามชีทแลปที่เขียนไว้สำหรับ gdb ได้เลย:
+  break/tbreak <ตำแหน่ง|*แอดเดรส>, run, start, kill, stepi/nexti [n], continue,
+  until/advance <ตำแหน่ง>, info registers [eax ...], info breakpoints,
+  p/x p/d p/u p/t p/c p/o <นิพจน์>  ($eax, $pc, &msg, (int)count, *(int*)p),
+  x/NFU <แอดเดรส> (x/4xw $esp, x/s &msg, x/16xb msg, x/5i $pc),
+  display[/FMT] <นิพจน์>, undisplay, info display, disassemble [ฟังก์ชัน],
+  enable/disable [n], set $eax = 5, set var (int)count = 0, backtrace, finish
 `},
 	"dbg.unknown":       {en: "unknown command %q (type h for help)", th: "ไม่รู้จักคำสั่ง %q (พิมพ์ h เพื่อดูวิธีใช้)"},
 	"dbg.finished":      {en: "the program has already finished (exit code %d). Use r, m, x to look around, q to quit.", th: "โปรแกรมจบไปแล้ว (exit code %d) ใช้ r, m, x เพื่อตรวจดู หรือ q เพื่อออก"},

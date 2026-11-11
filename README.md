@@ -198,6 +198,27 @@ breakpoint #1 at line 63: push ebp
 The program's own input still works while debugging (commands are read from
 the terminal, even when the program's stdin is redirected).
 
+#### Coming from gdb?
+
+On Apple Silicon Macs gdb cannot debug x86 programs, so `--step` also
+understands the gdb commands lab sheets use — follow them as written:
+
+| gdb (lab sheet) | works in `nasmx86 --step` |
+|---|---|
+| `break _start`, `break *0x8049005`, `tbreak`, `run`, `start`, `kill` | ✅ (`run` again restarts the program) |
+| `stepi`, `nexti`, `stepi 5`, `continue`, `finish`, `until 20`, `advance loop` | ✅ |
+| `info registers`, `info registers eax`, `i r` | ✅ same layout, incl. `eflags [ PF ZF IF ]` |
+| `print $eax`, `p/x $eax`, `p/t $al` (binary), `p/c`, `p (int)count`, `p *(int*)&arr` | ✅ |
+| `x/4xw $esp`, `x/s &msg`, `x/16xb msg`, `x/5i $pc` | ✅ |
+| `display/i $pc`, `display $eax`, `undisplay`, `info display` | ✅ shown after every step |
+| `disassemble`, `backtrace`, `info breakpoints`, `enable`/`disable`, `delete` | ✅ |
+| `set $eax = 5`, `set var (int)count = 0`, `set {char}&msg = 'H'` | ✅ |
+| `set disassembly-flavor intel` | accepted (output is always Intel/NASM syntax) |
+| `layout regs` / `layout asm` (TUI) | ❌ use `display/i $pc` and `display $eax` instead |
+
+The short commands above (`s`, `n`, `c`, `r` for registers, `m`, `x` for the
+stack) keep working. Note `r` shows registers here; gdb's `r` (run) is `run`.
+
 Example: why does my recursion return the wrong value?
 
 ```
