@@ -144,14 +144,14 @@ func TestUnknownSyscallWarning(t *testing.T) {
 section .text
 global _start
 _start:
-    mov eax, 162        ; nanosleep: not supported
+    mov eax, 102        ; socketcall: not supported
     int 0x80
     neg eax
     mov ebx, eax
     mov eax, 1
     int 0x80
 `, "")
-	if code != 38 || !strings.Contains(errs, "system call 162 is not supported") {
+	if code != 38 || !strings.Contains(errs, "system call 102 is not supported") {
 		t.Errorf("code=%d err=%q", code, errs)
 	}
 }

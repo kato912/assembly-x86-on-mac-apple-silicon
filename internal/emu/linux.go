@@ -69,9 +69,13 @@ func (l *Linux) warn(key string, args ...any) {
 }
 
 var sys32 = map[uint64]string{1: "exit", 3: "read", 4: "write", 5: "open", 6: "close",
-	8: "creat", 10: "unlink", 13: "time", 19: "lseek", 20: "getpid", 45: "brk", 252: "exit_group", 295: "openat"}
-var sys64 = map[uint64]string{0: "read", 1: "write", 2: "open", 3: "close", 8: "lseek",
-	12: "brk", 39: "getpid", 60: "exit", 85: "creat", 87: "unlink", 201: "time", 231: "exit_group", 257: "openat"}
+	8: "creat", 10: "unlink", 13: "time", 19: "lseek", 20: "getpid", 38: "rename", 39: "mkdir",
+	40: "rmdir", 45: "brk", 78: "gettimeofday", 106: "stat", 108: "fstat", 162: "nanosleep",
+	252: "exit_group", 265: "clock_gettime", 295: "openat"}
+var sys64 = map[uint64]string{0: "read", 1: "write", 2: "open", 3: "close", 4: "stat", 5: "fstat",
+	8: "lseek", 12: "brk", 35: "nanosleep", 39: "getpid", 60: "exit", 82: "rename", 83: "mkdir",
+	84: "rmdir", 85: "creat", 87: "unlink", 96: "gettimeofday", 201: "time", 228: "clock_gettime",
+	231: "exit_group", 257: "openat"}
 
 // SyscallName returns the Linux name of system call nr for the ABI.
 func SyscallName(nr uint64, int80 bool) string {
@@ -171,6 +175,22 @@ func (l *Linux) dispatch(c *CPU, name string, int80 bool, a [6]uint64) (ret int6
 		ret, desc = int64(os.Getpid()), "getpid()"
 	case "time":
 		ret, desc = l.sysTime(c, a[0], int80)
+	case "nanosleep":
+		ret, desc = l.sysNanosleep(c, a[0], int80)
+	case "clock_gettime":
+		ret, desc = l.sysClockGettime(c, a[0], a[1], int80)
+	case "gettimeofday":
+		ret, desc = l.sysGettimeofday(c, a[0], a[1], int80)
+	case "stat":
+		ret, desc = l.sysStat(c, a[0], a[1], int80)
+	case "fstat":
+		ret, desc = l.sysFstat(c, int(int32(a[0])), a[1], int80)
+	case "mkdir":
+		ret, desc = l.sysMkdir(c, a[0], a[1])
+	case "rmdir":
+		ret, desc = l.sysRmdir(c, a[0])
+	case "rename":
+		ret, desc = l.sysRename(c, a[0], a[1])
 	default:
 		return 0, "", false, nil
 	}

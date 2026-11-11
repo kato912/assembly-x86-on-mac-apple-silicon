@@ -59,6 +59,8 @@ func errno(err error) int64 {
 		return EMFILE
 	case errors.Is(err, syscall.ENOSPC):
 		return ENOSPC
+	case errors.Is(err, syscall.ENOTEMPTY):
+		return ENOTEMPTY
 	case errors.Is(err, fs.ErrClosed):
 		return EBADF
 	}
