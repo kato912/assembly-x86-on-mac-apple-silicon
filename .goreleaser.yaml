@@ -1,0 +1,90 @@
+# GoReleaser configuration: builds static binaries for macOS, Linux and
+# Windows, uploads them to GitHub Releases and updates the Homebrew tap.
+# Runs from .github/workflows/release.yml when a v* tag is pushed.
+version: 2
+project_name: nasmx86
+
+builds:
+  - id: unix
+    main: ./cmd/nasmx86
+    binary: nasmx86
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+  - id: windows
+    main: ./cmd/nasmx86
+    binary: nasmx86
+    env: [CGO_ENABLED=0]
+    goos: [windows]
+    goarch: [amd64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+
+archives:
+  - id: unix
+    ids: [unix]
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - README.th.md
+      - examples/*.asm
+  - id: windows
+    ids: [windows]
+    formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - README.th.md
+      - examples/*.asm
+      - src: packaging/INSTALL-WINDOWS.txt
+        dst: INSTALL-WINDOWS.txt
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^Merge"]
+
+# "brews" generates a Homebrew *formula* (Formula/nasmx86.rb). GoReleaser
+# marks it deprecated in favour of casks, but a formula can depend on the
+# nasm formula, works with Homebrew on Linux too, and is not quarantined by
+# macOS Gatekeeper, so it is kept on purpose (it is supported throughout v2).
+brews:
+  - name: nasmx86
+    ids: [unix]
+    repository:
+      owner: kato912
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/kato912/assembly-x86-on-mac-apple-silicon"
+    description: "Run 32/64-bit x86 Linux NASM programs anywhere, no VM needed"
+    commit_author:
+      name: kato912
+      email: 89004444+kato912@users.noreply.github.com
+    commit_msg_template: "nasmx86 {{ .Tag }}"
+    dependencies:
+      - name: nasm
+    install: |
+      bin.install "nasmx86"
+      pkgshare.install Dir["examples/*"]
+    caveats: |
+      Example programs are in:
+        #{opt_pkgshare}
+      Try:  nasmx86 #{opt_pkgshare}/hello32.asm
+    test: |
+      (testpath/"t.asm").write <<~EOS
+        section .text
+        global _start
+        _start:
+          mov eax, 1
+          mov ebx, 7
+          int 0x80
+      EOS
+      system bin/"nasmx86", "--version"
+      shell_output("#{bin}/nasmx86 #{testpath}/t.asm", 7) # exit status must be 7

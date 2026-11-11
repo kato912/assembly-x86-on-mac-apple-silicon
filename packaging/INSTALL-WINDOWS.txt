@@ -1,0 +1,24 @@
+nasmx86 for Windows
+===================
+
+1. Install NASM (the assembler) — pick one:
+     winget install NASM.NASM
+   or download the installer from https://www.nasm.us/pub/nasm/releasebuilds/
+   (nasmx86 finds nasm in C:\Program Files\NASM even if it is not on PATH.)
+
+2. Put nasmx86.exe somewhere on your PATH, for example:
+     mkdir %USERPROFILE%\bin
+     copy nasmx86.exe %USERPROFILE%\bin
+     setx PATH "%PATH%;%USERPROFILE%\bin"
+   then open a NEW terminal window.
+
+3. Try it:
+     nasmx86 examples\hello32.asm
+
+Thai / ภาษาไทย
+--------------
+1. ติดตั้ง NASM:  winget install NASM.NASM
+   (หรือดาวน์โหลดตัวติดตั้งจาก https://www.nasm.us/pub/nasm/releasebuilds/)
+2. คัดลอก nasmx86.exe ไปไว้ในโฟลเดอร์ที่อยู่ใน PATH (ดูคำสั่งด้านบน) แล้วเปิดเทอร์มินัลใหม่
+3. ทดลอง:  nasmx86 examples\hello32.asm
+   ใช้  nasmx86 --th ไฟล์.asm  เพื่อดูข้อความแจ้งข้อผิดพลาดเป็นภาษาไทย
