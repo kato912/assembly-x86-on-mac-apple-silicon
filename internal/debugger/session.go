@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"golang.org/x/arch/x86/x86asm"
+
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
 )
@@ -18,10 +20,21 @@ type memWrite struct {
 	val  uint64
 }
 
+// Frame is one active function call, tracked from executed call/ret
+// instructions (a "shadow" call stack).
+type Frame struct {
+	Call   uint64 // address of the call instruction
+	Return uint64 // where it will return to
+	Target uint64 // the function that was called
+	SP     uint64 // stack pointer right after the call (return address slot)
+}
+
 // Session wraps a program and records what each executed instruction did.
 type Session struct {
 	P *runner.Program
 	C *emu.CPU
+
+	frames []Frame
 
 	sys    []string
 	writes []memWrite
@@ -61,17 +74,35 @@ type StepResult struct {
 func (s *Session) Step() StepResult {
 	before := s.snap()
 	pc := s.C.RIP
+	var op x86asm.Op
+	var length int
+	if in, derr := s.C.Decode(pc); derr == nil {
+		op, length = in.Op, in.Len
+	}
 	s.sys, s.writes, s.nwrite = s.sys[:0], s.writes[:0], 0
 	err := s.C.Step()
 	_, exited := err.(*emu.Exit)
 	// A faulting instruction did not complete; the fault is reported instead.
 	res := StepResult{PC: pc, Err: err, Ran: err == nil || exited}
+	if err == nil {
+		switch op {
+		case x86asm.CALL:
+			s.frames = append(s.frames, Frame{Call: pc, Return: pc + uint64(length), Target: s.C.RIP, SP: s.C.SP()})
+		case x86asm.RET:
+			for len(s.frames) > 0 && s.frames[len(s.frames)-1].SP < s.C.SP() {
+				s.frames = s.frames[:len(s.frames)-1]
+			}
+		}
+	}
 	if res.Ran {
 		res.Where = s.P.Where(pc)
 		res.Changes = s.changes(before)
 	}
 	return res
 }
+
+// Frames returns the active calls, outermost first.
+func (s *Session) Frames() []Frame { return s.frames }
 
 // changes lists what the last instruction changed.
 func (s *Session) changes(b snapshot) string {

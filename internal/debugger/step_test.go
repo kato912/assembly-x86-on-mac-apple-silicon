@@ -244,3 +244,46 @@ func TestSetCommand(t *testing.T) {
 		t.Errorf("exit code %d, want 6 (3!)", code)
 	}
 }
+
+func TestBacktraceAndFinish(t *testing.T) {
+	// Break at the base case of the recursion: three nested calls to fact.
+	out, code := session(t, "b 23\nc\nbt\nfinish\nbt\nfinish\nfinish\nfinish\nfinish\nq\n")
+	for _, w := range []string{
+		"#0   fact    line 23: mov eax, 1",
+		"#1   fact    line 18: call fact",
+		"#3   fact    line 18: call fact",
+		"#4   _start  line 8: call fact",
+		"returned from fact: eax = 0x00000001 (1)",
+		"returned from fact: eax = 0x00000002 (2)",
+		"returned from fact: eax = 0x00000018 (24)",
+		"not inside a function",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+	if code != 0 {
+		t.Errorf("quit before the end should return 0, got %d", code)
+	}
+}
+
+func TestBacktraceAfterCrash(t *testing.T) {
+	p, _, _ := build(t, `
+section .text
+global _start
+_start:
+    call outer
+outer:
+    call inner
+inner:
+    xor ebx, ebx
+    mov eax, [ebx]
+`, "")
+	var out bytes.Buffer
+	Interactive(NewSession(p), strings.NewReader("c\nbt\nq\n"), &out)
+	for _, w := range []string{"#0   inner   line 10: mov eax, [ebx]", "#1   outer   line 7: call inner", "#2   _start  line 5: call outer"} {
+		if !strings.Contains(out.String(), w) {
+			t.Errorf("output lacks %q:\n%s", w, out.String())
+		}
+	}
+}

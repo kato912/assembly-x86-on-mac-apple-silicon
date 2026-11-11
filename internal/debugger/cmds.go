@@ -183,3 +183,54 @@ func b2i(b bool) int {
 	}
 	return 0
 }
+
+// funcName returns the function (non-local label) containing addr.
+func (d *stepper) funcName(addr uint64) string {
+	sym, ok := d.p.Image.SymbolFor(addr)
+	if !ok {
+		return "?"
+	}
+	if i := strings.IndexByte(sym.Name, '.'); i > 0 {
+		return sym.Name[:i] // "fact.base" is the local label .base inside fact
+	}
+	return sym.Name
+}
+
+// btCmd prints the call stack: where we are, then each active call.
+func (d *stepper) btCmd() {
+	frames := d.s.Frames()
+	type row struct{ fn, where string }
+	rows := []row{{d.funcName(d.c.RIP), d.p.Where(d.c.RIP)}}
+	for i := len(frames) - 1; i >= 0; i-- {
+		rows = append(rows, row{d.funcName(frames[i].Call), d.p.Where(frames[i].Call)})
+	}
+	w := 0
+	for _, r := range rows {
+		w = max(w, len(r.fn))
+	}
+	for i, r := range rows {
+		if len(rows) > 24 && i == 12 {
+			fmt.Fprintf(d.out, "   ... %d more ...\n", len(rows)-24)
+		}
+		if len(rows) > 24 && i >= 12 && i < len(rows)-12 {
+			continue
+		}
+		fmt.Fprintf(d.out, "#%-3d %-*s  %s\n", i, w, r.fn, r.where)
+	}
+}
+
+// finishCmd runs until the current function returns to its caller.
+func (d *stepper) finishCmd() {
+	frames := d.s.Frames()
+	if len(frames) == 0 {
+		fmt.Fprintln(d.out, i18n.T("dbg.finishTop"))
+		return
+	}
+	depth := len(frames)
+	fn := d.funcName(frames[depth-1].Target)
+	d.run(func() bool { return len(d.s.Frames()) < depth })
+	if !d.stopped && len(d.s.Frames()) < depth {
+		reg := emu.RegName(emu.RAX, d.p.Bits)
+		fmt.Fprintln(d.out, i18n.T("dbg.returned", fn, reg, d.p.ValueText(emu.RAX, d.c.R[emu.RAX])))
+	}
+}

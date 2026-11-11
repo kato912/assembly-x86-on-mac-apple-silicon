@@ -176,6 +176,8 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
 	"dbg.pLabel":        {en: "(%[1]s is an address; to see the value stored there use  p [%[1]s]  or  p dword [%[1]s])", th: "(%[1]s คือแอดเดรส ถ้าจะดูค่าที่เก็บไว้ให้ใช้  p [%[1]s]  หรือ  p dword [%[1]s])"},
 	"dbg.setUsage":      {en: "usage: set <register|flag|eip> <value>  or  set [byte|word|dword|qword] [address] <value>\n  e.g.  set eax 5   set zf 1   set dword [count] 0   set byte [msg] 'h'", th: "วิธีใช้: set <รีจิสเตอร์|แฟล็ก|eip> <ค่า>  หรือ  set [byte|word|dword|qword] [แอดเดรส] <ค่า>\n  เช่น  set eax 5   set zf 1   set dword [count] 0   set byte [msg] 'h'"},
 	"dbg.setMemFail":    {en: "cannot write memory at %s (not writable — e.g. section .text is read-only)", th: "เขียนหน่วยความจำที่ %s ไม่ได้ (ส่วนนั้นเขียนไม่ได้ เช่น section .text อ่านได้อย่างเดียว)"},
+	"dbg.finishTop":     {en: "not inside a function (no call to return from); use c to continue", th: "ตอนนี้ไม่ได้อยู่ในฟังก์ชัน (ไม่มี call ให้ return กลับ) ใช้ c เพื่อรันต่อ"},
+	"dbg.returned":      {en: "returned from %s: %s = %s", th: "ออกจาก %s แล้ว: %s = %s"},
 	"dbg.memUsage":      {en: "usage: m <address|label|register> [length]", th: "วิธีใช้: m <แอดเดรส|label|รีจิสเตอร์> [ความยาว]"},
 	"dbg.unreadable":    {en: "memory at %s is not readable", th: "อ่านหน่วยความจำที่ %s ไม่ได้"},
 	"dbg.retAddr":       {en: "return address → line %d", th: "return address → บรรทัด %d"},

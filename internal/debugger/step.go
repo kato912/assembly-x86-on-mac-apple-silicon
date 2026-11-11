@@ -39,6 +39,7 @@ type stepper struct {
 	bps     map[uint64]int // address -> breakpoint number
 	nextBP  int
 	stopped bool // the program has exited or crashed
+	exited  bool // it exited normally (so there is no call stack left)
 	code    int  // nasmx86 exit code once stopped
 }
 
@@ -99,8 +100,18 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			d.printCmd(cmd, args)
 		case "set":
 			d.setCmd(args)
-		case "x", "stack", "bt":
+		case "x", "stack":
 			d.stackCmd(args)
+		case "bt", "backtrace", "where":
+			if d.exited {
+				d.alive()
+			} else {
+				d.btCmd() // also useful after a crash: where it happened
+			}
+		case "finish", "fin", "out":
+			if d.alive() {
+				d.finishCmd()
+			}
 		case "l", "list":
 			d.listCmd()
 		case "q", "quit", "exit":
@@ -126,6 +137,7 @@ func (d *stepper) finish(err error) {
 	d.code = d.p.Finish(err)
 	var ex *emu.Exit
 	if errors.As(err, &ex) {
+		d.exited = true
 		fmt.Fprintln(d.out, i18n.T("dbg.exited", d.code))
 	} else {
 		fmt.Fprintln(d.out, i18n.T("dbg.crashed"))
