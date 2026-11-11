@@ -25,7 +25,7 @@ jobs:
           go-version-file: go.mod
       - name: Install nasm (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y nasm
+        run: scripts/ci-install-nasm.sh
       - name: Install nasm (macOS)
         if: runner.os == 'macOS'
         run: brew install nasm
@@ -57,7 +57,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - run: sudo apt-get update && sudo apt-get install -y nasm binutils
+      - name: Install nasm
+        run: scripts/ci-install-nasm.sh
       - run: nasm -v && ld -v && uname -m && grep -m1 'model name' /proc/cpuinfo
       - name: Differential tests
         shell: bash
