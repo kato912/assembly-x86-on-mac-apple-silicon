@@ -14,11 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Pinned images: a moving "-latest" label can drop packages (nasm)
+        # or change tools under us.
+        os: [ubuntu-24.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Install nasm (Linux)
@@ -35,24 +37,34 @@ jobs:
           "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - run: go vet ./...
       - name: Unit tests
-        run: go test ./...
+        shell: bash
+        run: go test ./... 2>&1 | tee test-output.txt; exit ${PIPESTATUS[0]}
         env:
           NASMX86_NATIVE: "0"
+      - name: Report failures as annotations
+        if: failure()
+        shell: bash
+        run: scripts/annotate-failures.sh test-output.txt
 
   differential:
     # The source of truth: every test program is assembled with nasm, linked
     # with GNU ld and run natively on x86-64 Linux, then run through nasmx86;
     # stdout (register/flag dumps) and exit status must be identical.
     name: differential (native x86-64 vs nasmx86)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - run: sudo apt-get update && sudo apt-get install -y nasm binutils
       - run: nasm -v && ld -v && uname -m && grep -m1 'model name' /proc/cpuinfo
       - name: Differential tests
-        run: go test ./internal/difftest -v -count=1
+        shell: bash
+        run: go test ./internal/difftest -v -count=1 2>&1 | tee test-output.txt; exit ${PIPESTATUS[0]}
         env:
           NASMX86_REQUIRE_NATIVE: "1"
+      - name: Report failures as annotations
+        if: failure()
+        shell: bash
+        run: scripts/annotate-failures.sh test-output.txt
