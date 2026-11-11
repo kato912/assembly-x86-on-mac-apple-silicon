@@ -2,9 +2,13 @@ package debugger
 
 import (
 	"bytes"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/nasm"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
 )
 
@@ -121,4 +125,38 @@ func mustSym(t *testing.T, p *runner.Program, name string) uint64 {
 		t.Fatalf("no symbol %s", name)
 	}
 	return s.Addr
+}
+
+func TestMultiFileBreakpoints(t *testing.T) {
+	if _, err := nasm.Find(); err != nil {
+		t.Skip("nasm not installed")
+	}
+	dir := t.TempDir()
+	mainPath := filepath.Join(dir, "main.asm")
+	ioPath := filepath.Join(dir, "io.asm")
+	os.WriteFile(mainPath, []byte("extern twice\nglobal _start\nsection .text\n_start:\n    mov eax, 21\n    call twice\n    mov ebx, eax\n    mov eax, 1\n    int 0x80\n"), 0o644)
+	os.WriteFile(ioPath, []byte("global twice\nsection .text\ntwice:\n    add eax, eax\n    ret\n"), 0o644)
+	var errb bytes.Buffer
+	p, code := runner.Build(runner.Config{Source: mainPath, Extra: []string{ioPath}, MaxSteps: 1000,
+		Stdin: strings.NewReader(""), Stdout: io.Discard, Stderr: &errb})
+	if p == nil {
+		t.Fatalf("build %d: %s", code, errb.String())
+	}
+	defer p.Close()
+	var out bytes.Buffer
+	code = Interactive(NewSession(p), strings.NewReader("b io.asm:4\nc\nl\nc\n"), &out)
+	for _, w := range []string{
+		"breakpoint #1 at io.asm line 4: add eax, eax",
+		"→ io.asm line 4: add eax, eax",
+		"  io.asm\n", // l shows which file it lists
+		"→    4      add eax, eax",
+		"program exited with code 42",
+	} {
+		if !strings.Contains(out.String(), w) {
+			t.Errorf("output lacks %q:\n%s", w, out.String())
+		}
+	}
+	if code != 42 {
+		t.Errorf("exit code %d", code)
+	}
 }

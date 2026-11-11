@@ -480,7 +480,18 @@ func (img *Image) SectionAt(addr uint64) *Section {
 	return nil
 }
 
-// SectionByName returns the named section, or nil.
+// SectionOf returns the named section that came from input file obj, or nil.
+func (img *Image) SectionOf(obj int, name string) *Section {
+	for _, s := range img.Sections {
+		if s.Obj == obj && s.Name == name {
+			return s
+		}
+	}
+	return nil
+}
+
+// SectionByName returns the named section (from the first file that has
+// one), or nil.
 func (img *Image) SectionByName(name string) *Section {
 	for _, s := range img.Sections {
 		if s.Name == name {

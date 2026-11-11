@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -173,20 +174,28 @@ func (d *stepper) next() {
 	d.run(func() bool { return d.c.RIP == ret && d.c.SP() >= sp })
 }
 
-// resolve turns a breakpoint argument (line number, label, address) into
-// a code address and a description.
+// resolve turns a breakpoint argument — a line number ("12"), a line in
+// another file ("util.asm:5"), a label or an address — into a code address
+// and a description.
 func (d *stepper) resolve(arg string) (uint64, string, error) {
-	if n, err := strconv.Atoi(arg); err == nil {
-		lines := d.p.Lines.Lines()
-		i := sort.SearchInts(lines, n)
-		for ; i < len(lines); i++ {
-			for _, so := range d.p.Lines.Places(lines[i]) {
-				if sec := d.p.Image.SectionByName(so.Section); sec != nil && sec.Exec {
-					return sec.Addr + so.Off, i18n.T("loc.line", lines[i], runner.CodeText(d.p.Lines.Text(lines[i]))), nil
-				}
-			}
+	file, lineArg := 0, arg
+	if i := strings.LastIndexByte(arg, ':'); i > 0 {
+		f, ok := d.p.FileIndex(arg[:i])
+		if !ok {
+			return 0, "", errors.New(i18n.T("dbg.noFile", arg[:i]))
 		}
-		return 0, "", errors.New(i18n.T("dbg.noCode", n))
+		file, lineArg = f, arg[i+1:]
+	}
+	if n, err := strconv.Atoi(lineArg); err == nil {
+		addr, line, text, ok := d.p.LineAddr(file, n)
+		if !ok {
+			return 0, "", errors.New(i18n.T("dbg.noCode", n))
+		}
+		desc := i18n.T("loc.line", line, text)
+		if len(d.p.Files) > 1 {
+			desc = filepath.Base(d.p.Files[file].Path) + " " + desc
+		}
+		return addr, desc, nil
 	}
 	a, err := d.eval(arg)
 	if err != nil {
@@ -420,22 +429,26 @@ func (d *stepper) stackCmd(args []string) {
 }
 
 func (d *stepper) listCmd() {
-	cur := 0
-	if loc, ok := d.p.LocAt(d.c.RIP); ok && loc.File == "" {
-		cur = loc.Line
+	file, cur := 0, 0
+	if f, loc, ok := d.p.Locate(d.c.RIP); ok && loc.File == "" {
+		file, cur = f, loc.Line
 	}
+	src := d.p.Files[file].Source
 	bpLines := map[int]bool{}
 	for a := range d.bps {
-		if loc, ok := d.p.LocAt(a); ok && loc.File == "" {
+		if f, loc, ok := d.p.Locate(a); ok && f == file && loc.File == "" {
 			bpLines[loc.Line] = true
 		}
+	}
+	if len(d.p.Files) > 1 {
+		fmt.Fprintf(d.out, "  %s\n", filepath.Base(d.p.Files[file].Path))
 	}
 	from, to := cur-5, cur+5
 	if from < 1 {
 		from = 1
 	}
-	if to > len(d.p.Source) {
-		to = len(d.p.Source)
+	if to > len(src) {
+		to = len(src)
 	}
 	for l := from; l <= to; l++ {
 		mark := "  "
@@ -445,6 +458,6 @@ func (d *stepper) listCmd() {
 		if l == cur {
 			mark = "→ "
 		}
-		fmt.Fprintf(d.out, "%s%4d  %s\n", mark, l, strings.ReplaceAll(d.p.Source[l-1], "\t", "    "))
+		fmt.Fprintf(d.out, "%s%4d  %s\n", mark, l, strings.ReplaceAll(src[l-1], "\t", "    "))
 	}
 }

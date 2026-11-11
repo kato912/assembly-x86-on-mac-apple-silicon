@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/arch/x86/x86asm"
@@ -11,28 +12,40 @@ import (
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/nasm"
 )
 
-// LocAt maps an address to the source line that produced it.
-func (p *Program) LocAt(addr uint64) (nasm.Loc, bool) {
+// Locate maps an address to the input file (index into Files) and the
+// source line that produced it.
+func (p *Program) Locate(addr uint64) (file int, loc nasm.Loc, ok bool) {
 	if p.Image == nil {
-		return nasm.Loc{}, false
+		return 0, nasm.Loc{}, false
 	}
 	sec := p.Image.SectionAt(addr)
-	if sec == nil {
-		return nasm.Loc{}, false
+	if sec == nil || sec.Obj >= len(p.Files) {
+		return 0, nasm.Loc{}, false
 	}
-	return p.Lines.Lookup(sec.Name, addr-sec.Addr)
+	loc, ok = p.Files[sec.Obj].Lines.Lookup(sec.Name, addr-sec.Addr)
+	return sec.Obj, loc, ok
+}
+
+// LocAt maps an address to the source line that produced it.
+func (p *Program) LocAt(addr uint64) (nasm.Loc, bool) {
+	_, loc, ok := p.Locate(addr)
+	return loc, ok
 }
 
 // Where describes the source location of the instruction at addr, e.g.
-// "line 12: mov eax, [ebx]".
+// "line 12: mov eax, [ebx]" (prefixed with the file name when the program
+// has several files or the line comes from an %include).
 func (p *Program) Where(addr uint64) string {
 	if addr == p.ExitStub && p.ExitStub != 0 {
 		return i18n.T("loc.stub")
 	}
-	if loc, ok := p.LocAt(addr); ok {
+	if file, loc, ok := p.Locate(addr); ok {
 		s := i18n.T("loc.line", loc.Line, CodeText(loc.Text))
-		if loc.File != "" {
+		switch {
+		case loc.File != "":
 			s = loc.File + " " + s
+		case len(p.Files) > 1:
+			s = filepath.Base(p.Files[file].Path) + " " + s
 		}
 		if loc.Macro != "" {
 			s += " " + i18n.T("loc.macro", CodeText(loc.Macro))
@@ -44,6 +57,37 @@ func (p *Program) Where(addr uint64) string {
 		s += ": " + p.Disasm(in, addr)
 	}
 	return s
+}
+
+// FileIndex finds an input file by its name or path ("util.asm").
+func (p *Program) FileIndex(name string) (int, bool) {
+	for i, f := range p.Files {
+		if f.Path == name || filepath.Base(f.Path) == name || filepath.Base(f.Path) == filepath.Base(name) {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// LineAddr returns the address of the first instruction generated for
+// line (or, if that line has no code, the next line that does) in input
+// file file, plus that line's number and text.
+func (p *Program) LineAddr(file, line int) (addr uint64, at int, text string, ok bool) {
+	if file < 0 || file >= len(p.Files) || p.Files[file].Lines == nil {
+		return 0, 0, "", false
+	}
+	lm := p.Files[file].Lines
+	for _, l := range lm.Lines() {
+		if l < line {
+			continue
+		}
+		for _, so := range lm.Places(l) {
+			if sec := p.Image.SectionOf(file, so.Section); sec != nil && sec.Exec {
+				return sec.Addr + so.Off, l, CodeText(lm.Text(l)), true
+			}
+		}
+	}
+	return 0, 0, "", false
 }
 
 // CodeText strips a trailing ; comment and collapses runs of spaces/tabs

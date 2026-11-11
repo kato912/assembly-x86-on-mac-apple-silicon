@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -112,7 +113,14 @@ func parseArgs(args []string) (*options, error) {
 			continue
 		}
 		if file != "" {
-			o.cfg.Args = append(o.cfg.Args, a)
+			// More source/object files directly after the first one are
+			// linked with it; the first other argument starts the program's
+			// own arguments.
+			if len(o.cfg.Args) == 0 && isInputFile(a) {
+				o.cfg.Extra = append(o.cfg.Extra, a)
+			} else {
+				o.cfg.Args = append(o.cfg.Args, a)
+			}
 			continue
 		}
 		if !strings.HasPrefix(a, "-") || a == "-" {
@@ -163,6 +171,16 @@ func parseArgs(args []string) (*options, error) {
 	}
 	o.cfg.Source = file
 	return o, nil
+}
+
+// isInputFile reports whether a command-line argument names an assembly
+// source or object file.
+func isInputFile(a string) bool {
+	switch strings.ToLower(filepath.Ext(a)) {
+	case ".asm", ".nasm", ".s", ".o", ".obj":
+		return !strings.HasPrefix(a, "-")
+	}
+	return false
 }
 
 // ownOption handles nasmx86's own flags. It reports whether args[*i] was one.

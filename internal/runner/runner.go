@@ -32,7 +32,8 @@ const (
 
 // Config describes one run.
 type Config struct {
-	Source   string
+	Source   string   // the main source file (.asm, or a nasm .o object)
+	Extra    []string // more source/object files linked with it
 	Bits     int      // 32, 64, or 0 to auto-detect
 	NasmArgs []string // extra options passed to nasm
 	Args     []string // program arguments (argv[1:])
@@ -51,12 +52,23 @@ type Program struct {
 	Image     *loader.Image
 	CPU       *emu.CPU
 	Linux     *emu.Linux
-	Source    []string // source file lines (1-based index = line-1)
-	Lines     *nasm.LineMap
+	Files     []SourceFile // input files in link order; Files[0] is the main one
 	InitialSP uint64
 	ExitStub  uint64
 
 	tmpDir string
+}
+
+// SourceFile is one input file of the program.
+type SourceFile struct {
+	Path   string
+	Source []string      // text lines (1-based line N = Source[N-1]); nil for .o files
+	Lines  *nasm.LineMap // address -> line map from the nasm listing; nil for .o files
+}
+
+// IsObject reports whether path names an already assembled object file.
+func IsObject(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".o") || strings.EqualFold(filepath.Ext(path), ".obj")
 }
 
 func (p *Program) errorf(key string, args ...any) {
@@ -76,58 +88,102 @@ func Build(cfg Config) (*Program, int) {
 		cfg.Stderr = os.Stderr
 	}
 	p := &Program{Cfg: cfg}
+	paths := append([]string{cfg.Source}, cfg.Extra...)
 
-	src, err := os.ReadFile(cfg.Source)
-	if err != nil {
-		p.errorf("err.readSource", cfg.Source, err)
-		return nil, ExitBuild
-	}
-	p.Source = strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
-
-	bits := cfg.Bits
-	if bits == 0 {
-		var why string
-		bits, why = nasm.DetectBitsFile(cfg.Source, src, includeDirs(cfg.NasmArgs))
-		if bits == 16 {
-			p.errorf("err.bits16", why)
+	// Read the sources and work out 32/64-bit mode from them.
+	srcs := make([][]byte, len(paths))
+	for i, path := range paths {
+		p.Files = append(p.Files, SourceFile{Path: path})
+		if IsObject(path) {
+			continue
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			p.errorf("err.readSource", path, err)
 			return nil, ExitBuild
 		}
+		srcs[i] = src
+		p.Files[i].Source = strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
 	}
-
-	nasmPath, err := nasm.Find()
-	if err != nil {
-		p.errorf("err.nasmMissing")
-		fmt.Fprintln(cfg.Stderr, InstallHint())
-		return nil, ExitNoNasm
-	}
-	p.tmpDir, err = os.MkdirTemp("", "nasmx86-")
-	if err != nil {
-		p.errorf("err.internal", err)
-		return nil, ExitBuild
-	}
-	res, err := nasm.Assemble(nasmPath, cfg.Source, bits, cfg.NasmArgs, p.tmpDir, cfg.Stderr)
-	if err != nil {
-		p.Close()
-		var ee *nasm.ExitError
-		if errors.As(err, &ee) {
-			return nil, ee.Code
+	bits := cfg.Bits
+	if bits == 0 {
+		bits = 64
+		for i, path := range paths {
+			if srcs[i] == nil {
+				continue
+			}
+			b, why := nasm.DetectBitsFile(path, srcs[i], includeDirs(cfg.NasmArgs))
+			if b == 16 {
+				p.errorf("err.bits16", why)
+				return nil, ExitBuild
+			}
+			if why != "default" {
+				bits = b
+				break
+			}
 		}
-		p.errorf("err.internal", err)
-		return nil, ExitBuild
 	}
 
-	if f, err := os.Open(res.Listing); err == nil {
-		p.Lines, _ = nasm.ParseListing(f)
-		f.Close()
+	var objects []string
+	var nasmPath string
+	for i, path := range paths {
+		if srcs[i] == nil {
+			objects = append(objects, path)
+			continue
+		}
+		if nasmPath == "" {
+			var err error
+			if nasmPath, err = nasm.Find(); err != nil {
+				p.errorf("err.nasmMissing")
+				fmt.Fprintln(cfg.Stderr, InstallHint())
+				return nil, ExitNoNasm
+			}
+			if p.tmpDir, err = os.MkdirTemp("", "nasmx86-"); err != nil {
+				p.errorf("err.internal", err)
+				return nil, ExitBuild
+			}
+		}
+		dir := filepath.Join(p.tmpDir, fmt.Sprint(i))
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			p.Close()
+			p.errorf("err.internal", err)
+			return nil, ExitBuild
+		}
+		res, err := nasm.Assemble(nasmPath, path, bits, cfg.NasmArgs, dir, cfg.Stderr)
+		if err != nil {
+			p.Close()
+			var ee *nasm.ExitError
+			if errors.As(err, &ee) {
+				return nil, ee.Code
+			}
+			p.errorf("err.internal", err)
+			return nil, ExitBuild
+		}
+		if f, err := os.Open(res.Listing); err == nil {
+			p.Files[i].Lines, _ = nasm.ParseListing(f)
+			f.Close()
+		}
+		objects = append(objects, res.Object)
 	}
 
-	img, err := loader.Link(res.Object)
+	img, err := loader.Link(objects...)
 	if err != nil {
 		p.Close()
 		var ue *loader.UndefinedError
-		if errors.As(err, &ue) {
+		var de *loader.DuplicateError
+		switch {
+		case errors.As(err, &ue):
 			p.errorf("err.undefined", strings.Join(ue.Names, ", "))
-		} else {
+			if len(paths) > 1 {
+				fmt.Fprintln(cfg.Stderr, "    "+i18n.T("hint.prefix")+i18n.T("hint.undefinedMulti", ue.Names[0]))
+			}
+		case errors.As(err, &de):
+			names := make([]string, len(de.Files))
+			for i, f := range de.Files {
+				names[i] = p.sourceFor(objects, f)
+			}
+			p.errorf("err.duplicate", de.Name, strings.Join(names, ", "))
+		default:
 			p.errorf("err.link", err)
 		}
 		return nil, ExitBuild
@@ -136,6 +192,16 @@ func Build(cfg Config) (*Program, int) {
 	p.Bits = img.Bits
 	p.load()
 	return p, 0
+}
+
+// sourceFor maps an object path back to the file the user named.
+func (p *Program) sourceFor(objects []string, obj string) string {
+	for i, o := range objects {
+		if o == obj {
+			return filepath.Base(p.Files[i].Path)
+		}
+	}
+	return filepath.Base(obj)
 }
 
 // InstallHint explains how to install nasm on the current OS.
@@ -204,7 +270,7 @@ func (p *Program) load() {
 		}
 	}
 
-	argv0 := "./" + strings.TrimSuffix(filepath.Base(p.Cfg.Source), filepath.Ext(p.Cfg.Source))
+	argv0 := "./" + strings.TrimSuffix(filepath.Base(p.Cfg.Source), filepath.Ext(p.Cfg.Source)) // like ./hello
 	argv := append([]string{argv0}, p.Cfg.Args...)
 	sp, argvPtr, envpPtr := emu.SetupStack(c, argv, os.Environ(), p.Image.Entry)
 	c.RIP = p.Image.Entry

@@ -2,9 +2,11 @@ package i18n
 
 var catalog = map[string]msg{
 	// command line
-	"usage": {en: `usage: nasmx86 [options] file.asm [program arguments...]
+	"usage": {en: `usage: nasmx86 [options] file.asm [more.asm ...] [program arguments...]
 
 Assemble, link and run a 32- or 64-bit Linux NASM program in one step.
+Several .asm (or nasm .o) files are linked together: the first one is the
+main program; use global/extern to share labels between them.
 
 options:
   --trace            print every executed instruction with its source line
@@ -23,10 +25,13 @@ examples:
   nasmx86 hello.asm
   nasmx86 --trace loop.asm
   nasmx86 -f elf32 hello.asm
+  nasmx86 main.asm io.asm
   echo 5 | nasmx86 fact.asm
-`, th: `วิธีใช้: nasmx86 [ตัวเลือก] ไฟล์.asm [อาร์กิวเมนต์ของโปรแกรม...]
+`, th: `วิธีใช้: nasmx86 [ตัวเลือก] ไฟล์.asm [ไฟล์อื่น.asm ...] [อาร์กิวเมนต์ของโปรแกรม...]
 
 แปลง (assemble) ลิงก์ และรันโปรแกรม NASM ของ Linux แบบ 32 หรือ 64 บิต ในคำสั่งเดียว
+ใส่ไฟล์ .asm (หรือ .o ของ nasm) หลายไฟล์ได้ ไฟล์แรกคือโปรแกรมหลัก
+ใช้ global/extern เพื่อเรียก label ข้ามไฟล์
 
 ตัวเลือก:
   --trace            แสดงทุกคำสั่งที่รัน พร้อมบรรทัดในซอร์สโค้ด
@@ -45,6 +50,7 @@ examples:
   nasmx86 hello.asm
   nasmx86 --trace loop.asm
   nasmx86 -f elf32 hello.asm
+  nasmx86 main.asm io.asm
   echo 5 | nasmx86 fact.asm
 `},
 	"err.prefix":        {en: "nasmx86: "},
@@ -69,7 +75,9 @@ e.g. write (eax=4, int 0x80 in 32-bit / rax=1, syscall in 64-bit).`, th: `โป
 nasmx86 รันโปรแกรมแอสเซมบลีล้วน ๆ โดยไม่มีไลบรารีภาษา C จึงใช้ฟังก์ชัน C
 อย่าง printf/scanf/puts ไม่ได้ ให้ใช้ system call ของ Linux แทน
 เช่น write (eax=4 แล้ว int 0x80 ในโหมด 32 บิต / rax=1 แล้ว syscall ในโหมด 64 บิต)`},
-	"err.internal": {en: "internal error: %v", th: "ข้อผิดพลาดภายใน: %v"},
+	"err.internal":        {en: "internal error: %v", th: "ข้อผิดพลาดภายใน: %v"},
+	"err.duplicate":       {en: "the label %s is defined (global) in more than one file: %s", th: "label %s ถูกประกาศเป็น global ในหลายไฟล์: %s"},
+	"hint.undefinedMulti": {en: "if %[1]s is in one of your other .asm files, declare it there with:  global %[1]s", th: "ถ้า %[1]s อยู่ในไฟล์ .asm อื่นของคุณ ต้องประกาศในไฟล์นั้นด้วย:  global %[1]s"},
 
 	// runtime warnings
 	"warn.efault": {en: "warning: %s: the buffer at %#x is not valid memory, so the call failed (returned -EFAULT)", th: "คำเตือน: %s: บัฟเฟอร์ที่ %#x ไม่ใช่หน่วยความจำที่ใช้ได้ การเรียกจึงล้มเหลว (คืนค่า -EFAULT)"},
@@ -126,7 +134,8 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
   Enter, s [n]     step one (or n) instructions
   n                next: like s, but runs a whole call until it returns
   c                continue until a breakpoint or the end of the program
-  b <line|label>   set a breakpoint (b alone lists them)
+  b <line|label>   set a breakpoint (b alone lists them; b util.asm:5
+                   for a line in another file)
   d [n|line]       delete breakpoint n (d alone deletes all)
   r                show registers and flags
   m <addr> [len]   hex dump of memory, e.g.  m msg   m esp 32   m buf+4 8
@@ -138,7 +147,8 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
   Enter, s [n]     รันทีละ 1 (หรือ n) คำสั่ง
   n                next: เหมือน s แต่ถ้าเป็น call จะรันทั้งฟังก์ชันจนกลับมา
   c                รันต่อจนเจอ breakpoint หรือโปรแกรมจบ
-  b <บรรทัด|label>  ตั้ง breakpoint (พิมพ์ b เฉย ๆ เพื่อดูรายการ)
+  b <บรรทัด|label>  ตั้ง breakpoint (พิมพ์ b เฉย ๆ เพื่อดูรายการ;
+                   b util.asm:5 สำหรับบรรทัดในไฟล์อื่น)
   d [n|บรรทัด]      ลบ breakpoint หมายเลข n (d เฉย ๆ = ลบทั้งหมด)
   r                แสดงรีจิสเตอร์และแฟล็ก
   m <แอดเดรส> [len] แสดงหน่วยความจำแบบเลขฐานสิบหก เช่น  m msg   m esp 32   m buf+4 8
@@ -155,6 +165,7 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
 	"dbg.hitBreak":      {en: "breakpoint #%d", th: "ถึง breakpoint #%d"},
 	"dbg.noCode":        {en: "no instructions at or after line %d", th: "ไม่มีคำสั่งที่บรรทัด %d หรือหลังจากนั้น"},
 	"dbg.notCode":       {en: "%s is not an instruction address", th: "%s ไม่ใช่แอดเดรสของคำสั่ง"},
+	"dbg.noFile":        {en: "no input file named %q", th: "ไม่มีไฟล์ชื่อ %q ในโปรแกรมนี้"},
 	"dbg.noBreaks":      {en: "no breakpoints", th: "ยังไม่มี breakpoint"},
 	"dbg.breakSet":      {en: "breakpoint #%d at %s", th: "ตั้ง breakpoint #%d ที่ %s"},
 	"dbg.breaksCleared": {en: "all breakpoints deleted", th: "ลบ breakpoint ทั้งหมดแล้ว"},

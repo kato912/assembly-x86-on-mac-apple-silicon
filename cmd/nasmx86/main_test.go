@@ -32,6 +32,15 @@ func TestParseArgs(t *testing.T) {
 			t.Errorf("%v: got file=%q bits=%d nasm=%q args=%q", c.args, o.cfg.Source, o.cfg.Bits, o.cfg.NasmArgs, o.cfg.Args)
 		}
 	}
+	o, err := parseArgs([]string{"main.asm", "util.asm", "lib.o", "arg.txt", "more.asm"})
+	if err != nil || o.cfg.Source != "main.asm" || !reflect.DeepEqual(o.cfg.Extra, []string{"util.asm", "lib.o"}) ||
+		!reflect.DeepEqual(o.cfg.Args, []string{"arg.txt", "more.asm"}) {
+		t.Errorf("multi-file: %+v %v", o.cfg, err)
+	}
+	o, _ = parseArgs([]string{"main.asm", "--", "data.asm"})
+	if len(o.cfg.Extra) != 0 || !reflect.DeepEqual(o.cfg.Args, []string{"data.asm"}) {
+		t.Errorf("-- should stop file detection: %+v", o.cfg)
+	}
 	if o, _ := parseArgs([]string{"--max-steps=5", "x.asm"}); o.cfg.MaxSteps != 5 {
 		t.Errorf("max steps %d", o.cfg.MaxSteps)
 	}
