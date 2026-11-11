@@ -78,7 +78,7 @@ _start:
     push 12
     call add2
     add esp, 8
-    DUMP
+    DUMP FL_NONE                ; (add's flags depend on the random stack address)
     push 9                      ; stdcall-style: ret 8
     push 4
     call sub2
