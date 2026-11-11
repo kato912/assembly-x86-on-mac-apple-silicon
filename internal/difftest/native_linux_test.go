@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"syscall"
 	"testing"
 
@@ -42,12 +43,19 @@ func runNative(t *testing.T, p program) ([]byte, int, error) {
 		bits, _ = nasm.DetectBitsFile(p.path, src, []string{p.incDir})
 	}
 	dir := t.TempDir()
-	res, err := nasm.Assemble(nasmPath, p.path, bits, []string{"-I" + p.incDir + "/"}, dir, io.Discard)
-	if err != nil {
-		return nil, 0, err
-	}
 	exe := filepath.Join(dir, "prog")
-	ldArgs := []string{"-o", exe, res.Object}
+	ldArgs := []string{"-o", exe}
+	for i, src := range append([]string{p.path}, p.extra...) {
+		sub := filepath.Join(dir, strconv.Itoa(i))
+		if err := os.Mkdir(sub, 0o755); err != nil {
+			return nil, 0, err
+		}
+		res, err := nasm.Assemble(nasmPath, src, bits, []string{"-I" + p.incDir + "/"}, sub, io.Discard)
+		if err != nil {
+			return nil, 0, err
+		}
+		ldArgs = append(ldArgs, res.Object)
+	}
 	if bits == 32 {
 		ldArgs = append([]string{"-m", "elf_i386"}, ldArgs...)
 	}

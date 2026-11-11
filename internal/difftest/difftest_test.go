@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,8 +31,9 @@ const (
 
 type program struct {
 	name     string
-	path     string
-	bits     int // 0 = let nasmx86 auto-detect (examples)
+	path     string   // main source file
+	extra    []string // more source files linked with it (multi-file programs)
+	bits     int      // 0 = let nasmx86 auto-detect (examples)
 	stdin    []byte
 	wantExit int
 	incDir   string
@@ -39,16 +41,18 @@ type program struct {
 
 var exitRE = regexp.MustCompile(`(?m)^;\s*exit:\s*(\d+)`)
 
+// collect finds the test programs: every *.asm file in testdata/diff/32,
+// testdata/diff/64 and examples, and every subdirectory there, which is one
+// program made of all its .asm files (main.asm first).
 func collect(t *testing.T) []program {
 	var progs []program
 	inc, _ := filepath.Abs(filepath.Join(diffDir, "inc"))
-	add := func(path string, bits int, inPath string) {
-		src, err := os.ReadFile(path)
+	add := func(name string, files []string, bits int, inPath string) {
+		src, err := os.ReadFile(files[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		p := program{path: path, bits: bits, incDir: inc}
-		p.name = fmt.Sprintf("%s/%s", filepath.Base(filepath.Dir(path)), strings.TrimSuffix(filepath.Base(path), ".asm"))
+		p := program{name: name, path: files[0], extra: files[1:], bits: bits, incDir: inc}
 		if m := exitRE.FindSubmatch(src); m != nil {
 			p.wantExit, _ = strconv.Atoi(string(m[1]))
 		}
@@ -57,16 +61,29 @@ func collect(t *testing.T) []program {
 		}
 		progs = append(progs, p)
 	}
-	for _, bits := range []int{32, 64} {
-		files, _ := filepath.Glob(filepath.Join(diffDir, strconv.Itoa(bits), "*.asm"))
-		for _, f := range files {
-			add(f, bits, strings.TrimSuffix(f, ".asm")+".in")
+	scan := func(dir string, bits int, inputFor func(base string, path string) string) {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			path := filepath.Join(dir, e.Name())
+			label := filepath.Base(dir) + "/" + strings.TrimSuffix(e.Name(), ".asm")
+			switch {
+			case e.IsDir():
+				files, _ := filepath.Glob(filepath.Join(path, "*.asm"))
+				sort.SliceStable(files, func(i, j int) bool {
+					return filepath.Base(files[i]) == "main.asm" && filepath.Base(files[j]) != "main.asm"
+				})
+				if len(files) > 0 {
+					add(label, files, bits, inputFor(e.Name(), filepath.Join(path, "main")))
+				}
+			case strings.HasSuffix(e.Name(), ".asm"):
+				add(label, []string{path}, bits, inputFor(strings.TrimSuffix(e.Name(), ".asm"), strings.TrimSuffix(path, ".asm")))
+			}
 		}
 	}
-	examples, _ := filepath.Glob(filepath.Join(exampleDir, "*.asm"))
-	for _, f := range examples {
-		add(f, 0, filepath.Join(inputDir, strings.TrimSuffix(filepath.Base(f), ".asm")+".in"))
+	for _, bits := range []int{32, 64} {
+		scan(filepath.Join(diffDir, strconv.Itoa(bits)), bits, func(_, stem string) string { return stem + ".in" })
 	}
+	scan(exampleDir, 0, func(base, _ string) string { return filepath.Join(inputDir, base+".in") })
 	if len(progs) == 0 {
 		t.Fatal("no test programs found")
 	}
@@ -115,6 +132,7 @@ func runEmu(p program) (stdout []byte, stderr string, code int) {
 	var out, errb bytes.Buffer
 	code = runner.Run(runner.Config{
 		Source:   p.path,
+		Extra:    p.extra,
 		Bits:     p.bits,
 		NasmArgs: []string{"-I" + p.incDir + string(filepath.Separator)},
 		MaxSteps: runner.DefaultMaxSteps,
