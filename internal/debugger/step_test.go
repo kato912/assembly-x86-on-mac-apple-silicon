@@ -441,3 +441,47 @@ func TestGdbDisplayTbreakUntil(t *testing.T) {
 		t.Errorf("until 9:\n%s", out)
 	}
 }
+
+// A session typed straight from a gdb lab sheet.
+func TestGdbLabSheetSession(t *testing.T) {
+	out, code := session(t, strings.Join([]string{
+		"set disassembly-flavor intel",
+		"set pagination off",
+		"layout regs",
+		"break _start",
+		"run",   // stops at the breakpoint on the entry point
+		"stepi", // mov eax, 4
+		"info registers eax",
+		"set $eax = 3", // compute 3! instead of 4!
+		"p $eax",
+		"set {char}&msg = 'D'",
+		"set var *(char*)(&msg+1) = 'O'",
+		"x/s &msg",
+		"nexti", // over the call: eax = 6
+		"p/x $eax",
+		"kill",
+		"run", // restart: back at the entry breakpoint
+		"stepi 2",
+		"continue",
+		"quit",
+	}, "\n")+"\n")
+	for _, w := range []string{
+		"breakpoint #1 at line 7: mov eax, 4",
+		"breakpoint #1\n",
+		"eax            0x4                4",
+		"$1 = 3",
+		"0x804a000 <msg>:\t\"DOne\\n\"",
+		"$2 = 0x6",
+		"Program killed",
+		"Starting program from the beginning.",
+		"program exited with code 24",
+		"TUI layouts are not available",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+	if code != 24 {
+		t.Errorf("exit code %d", code)
+	}
+}

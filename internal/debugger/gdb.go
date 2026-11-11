@@ -615,3 +615,148 @@ func (d *stepper) untilCmd(args []string) {
 	}
 	d.run(func() bool { return d.c.RIP == a })
 }
+
+// restart reloads the program and keeps breakpoints, watchpoints and
+// displays (gdb's "run" on a program that already ran).
+func (d *stepper) restart() {
+	d.p.Reload()
+	d.s = NewSession(d.p)
+	d.c = d.p.CPU
+	d.stopped, d.exited, d.code = false, false, 0
+	for _, w := range d.watches {
+		w.old, _ = d.watchValue(w)
+	}
+}
+
+// runCmd implements run/start/starti.
+func (d *stepper) runCmd(cmd string) {
+	if d.c.Steps > 0 || d.stopped {
+		fmt.Fprintln(d.out, i18n.T("dbg.restarting"))
+		d.restart()
+	}
+	if cmd != "run" {
+		return
+	}
+	// "break _start" + "run" stops at the entry point before running it.
+	if b, ok := d.bps[d.c.RIP]; ok && b.enabled {
+		fmt.Fprintln(d.out, i18n.T("dbg.hitBreak", b.n))
+		if b.temp {
+			delete(d.bps, d.c.RIP)
+		}
+		return
+	}
+	d.run(nil)
+}
+
+// gdbSettings are "set" options from gdb that do not apply to nasmx86;
+// they are accepted silently so lab-sheet scripts work unchanged.
+var gdbSettings = []string{"disassembly-flavor", "pagination", "confirm", "height", "width",
+	"listsize", "print ", "logging", "style", "history", "verbose", "startup-with-shell",
+	"disable-randomization", "architecture", "auto-load", "debuginfod"}
+
+// gdbSet handles gdb forms of set: settings, "set var", "lhs = value".
+// It returns false when the arguments should be handled as nasmx86's own
+// "set <what> <value>" syntax.
+func (d *stepper) gdbSet(raw string) bool {
+	lower := strings.ToLower(raw)
+	for _, opt := range gdbSettings {
+		if strings.HasPrefix(lower, opt) {
+			if strings.HasPrefix(lower, "disassembly-flavor") && strings.Contains(lower, "att") {
+				fmt.Fprintln(d.out, i18n.T("dbg.attSyntax"))
+			}
+			return true
+		}
+	}
+	for _, prefix := range []string{"variable ", "var "} {
+		if strings.HasPrefix(lower, prefix) {
+			raw = strings.TrimSpace(raw[len(prefix):])
+			break
+		}
+	}
+	i := strings.Index(raw, "=")
+	if i <= 0 || (i+1 < len(raw) && raw[i+1] == '=') {
+		return false
+	}
+	lhs, rhs := strings.TrimSpace(raw[:i]), strings.TrimSpace(raw[i+1:])
+	if strings.HasPrefix(lhs, "$") {
+		name := strings.ToLower(lhs[1:])
+		switch name {
+		case "pc":
+			name = "eip"
+		case "sp":
+			name = emu.RegName(emu.RSP, d.p.Bits)
+		case "fp":
+			name = emu.RegName(emu.RBP, d.p.Bits)
+		case "eflags", "rflags":
+			v, err := d.eval(rhs)
+			if err != nil {
+				fmt.Fprintln(d.out, err)
+				return true
+			}
+			const user = emu.CF | emu.PF | emu.AF | emu.ZF | emu.SF | emu.DF | emu.OF
+			d.c.RFLAGS = d.c.RFLAGS&^user | v&user
+			fmt.Fprintln(d.out, "eflags = "+gdbFlags(d.c.RFLAGS))
+			return true
+		}
+		d.setCmd([]string{name, rhs})
+		return true
+	}
+	addr, size, err := d.lvalue(lhs)
+	if err != nil {
+		fmt.Fprintln(d.out, err)
+		return true
+	}
+	name := map[int]string{1: "byte", 2: "word", 4: "dword", 8: "qword"}[size]
+	d.setCmd([]string{name, fmt.Sprintf("[%#x]", addr), rhs})
+	return true
+}
+
+// lvalue finds the memory a gdb assignment target refers to:
+// {int}addr, *(int*)addr, (int)label, label, [addr], dword [addr].
+func (d *stepper) lvalue(lhs string) (uint64, int, error) {
+	p := d.parser(lhs)
+	size := d.c.Width()
+	switch p.peek() {
+	case '{':
+		p.pos++
+		n, _, _, ok := p.cType()
+		if !ok || p.peek() != '}' {
+			return 0, 0, p.fail()
+		}
+		p.pos++
+		t, err := p.exprTV()
+		return t.v, n, err
+	case '*':
+		p.pos++
+		t, err := p.unary()
+		if err != nil {
+			return 0, 0, err
+		}
+		if t.ptr != 0 {
+			size = t.ptr
+		}
+		return t.v, size, nil
+	case '(':
+		save := p.pos
+		p.pos++
+		if n, _, ptr, ok := p.cType(); ok && !ptr && p.peek() == ')' {
+			p.pos++
+			if a, ok := d.label(strings.TrimSpace(p.s[p.pos:])); ok {
+				return a, n, nil
+			}
+		}
+		p.pos = save
+	case '[':
+		a, err := p.address()
+		return a, size, err
+	}
+	w := strings.ToLower(p.word())
+	if n, ok := sizeWords[w]; ok {
+		a, err := p.address()
+		return a, n, err
+	}
+	if a, ok := d.label(strings.TrimSpace(lhs)); ok {
+		return a, size, nil
+	}
+	return 0, 0, p.fail()
+}

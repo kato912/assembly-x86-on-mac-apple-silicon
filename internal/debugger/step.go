@@ -85,7 +85,7 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			d.moved = true
 		}
 		switch cmd {
-		case "", "s", "step", "si":
+		case "", "s", "step", "si", "stepi":
 			n := 1
 			if len(args) > 0 {
 				if v, err := strconv.Atoi(args[0]); err == nil && v > 0 {
@@ -103,14 +103,27 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 					break
 				}
 			}
-		case "n", "next", "ni":
-			if d.alive() {
+		case "n", "next", "ni", "nexti":
+			n := 1
+			if v, err := strconv.Atoi(rest); err == nil && v > 0 {
+				n = v
+			}
+			for i := 0; i < n && d.alive(); i++ {
 				d.next()
 			}
-		case "c", "cont", "continue", "r!", "run":
+		case "c", "cont", "continue":
 			if d.alive() {
 				d.run(nil)
 			}
+		case "run", "start", "starti":
+			d.runCmd(cmd)
+		case "kill", "k":
+			if !d.stopped {
+				d.stopped, d.exited = true, true
+				fmt.Fprintln(out, i18n.T("dbg.killed"))
+			}
+		case "layout", "tui", "focus", "refresh", "winheight":
+			fmt.Fprintln(out, i18n.T("dbg.noTui"))
 		case "b", "break", "br":
 			d.breakCmd(args, false)
 		case "tbreak", "tb":

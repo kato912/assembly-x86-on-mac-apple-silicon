@@ -109,6 +109,9 @@ func (d *stepper) setCmd(args []string) {
 		fmt.Fprintln(d.out, i18n.T("dbg.setUsage"))
 		return
 	}
+	if d.gdbSet(raw) {
+		return
+	}
 	p := d.parser(raw)
 	first := p.word()
 	lfirst := strings.ToLower(first)

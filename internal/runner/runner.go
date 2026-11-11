@@ -242,6 +242,16 @@ func (p *Program) Close() {
 	}
 }
 
+// Reload puts the program back in its initial state (the debugger's
+// "run" restarts it): fresh memory, registers and open files.
+func (p *Program) Reload() {
+	if p.Linux != nil {
+		p.Linux.CloseAll()
+	}
+	p.ExitStub = 0
+	p.load()
+}
+
 func (p *Program) load() {
 	mem := emu.NewMemory()
 	p.Linux = emu.NewLinux(p.Cfg.Stdin, p.Cfg.Stdout, p.Cfg.Stderr)
