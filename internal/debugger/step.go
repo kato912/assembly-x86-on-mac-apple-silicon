@@ -36,18 +36,19 @@ type stepper struct {
 	in  *bufio.Reader
 	out io.Writer
 
-	bps     map[uint64]int // address -> breakpoint number
+	bps     map[uint64]*breakpoint // by address
 	watches []*watchpoint
 	nextBP  int  // shared numbering for breakpoints and watchpoints
 	stopped bool // the program has exited or crashed
 	exited  bool // it exited normally (so there is no call stack left)
 	code    int  // nasmx86 exit code once stopped
+	histN   int  // gdb value history number ($1, $2, ...)
 }
 
 // Interactive runs the --step debugger, reading commands from in and
 // writing to out. It returns nasmx86's exit code.
 func Interactive(s *Session, in io.Reader, out io.Writer) int {
-	d := &stepper{s: s, p: s.P, c: s.C, in: bufio.NewReader(in), out: out, bps: map[uint64]int{}}
+	d := &stepper{s: s, p: s.P, c: s.C, in: bufio.NewReader(in), out: out, bps: map[uint64]*breakpoint{}}
 	fmt.Fprintln(out, i18n.T("dbg.banner"))
 	for {
 		if !d.stopped {
@@ -64,6 +65,11 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 		if len(f) > 0 {
 			cmd, args = strings.ToLower(f[0]), f[1:]
 		}
+		format := "" // gdb style "p/x", "x/4xw", "display/i"
+		if i := strings.IndexByte(cmd, '/'); i > 0 {
+			cmd, format = cmd[:i], cmd[i+1:]
+		}
+		rest := strings.TrimSpace(strings.Join(args, " "))
 		switch cmd {
 		case "", "s", "step", "si":
 			n := 1
@@ -91,16 +97,27 @@ func Interactive(s *Session, in io.Reader, out io.Writer) int {
 			if d.alive() {
 				d.run(nil)
 			}
-		case "b", "break":
-			d.breakCmd(args)
+		case "b", "break", "br":
+			d.breakCmd(args, false)
 		case "d", "delete":
 			d.deleteCmd(args)
-		case "r", "reg", "regs", "registers", "info":
+		case "r", "reg", "regs", "registers":
 			fmt.Fprint(out, d.p.FormatRegs())
+		case "info", "i":
+			d.infoCmd(args)
 		case "m", "mem", "memory":
 			d.memCmd(args)
-		case "p", "print", "p/s":
-			d.printCmd(cmd, args)
+		case "p", "print", "inspect", "output":
+			switch {
+			case format == "" && looksGdb(rest):
+				d.gdbPrint("", rest)
+			case format == "":
+				d.printCmd("p", args)
+			case format == "s":
+				d.printCmd("p/s", args)
+			default:
+				d.gdbPrint(format, rest)
+			}
 		case "set":
 			d.setCmd(args)
 		case "watch", "w":
@@ -163,8 +180,11 @@ func (d *stepper) run(stop func() bool) {
 		default:
 		}
 		if !first {
-			if n, ok := d.bps[d.c.RIP]; ok {
-				fmt.Fprintln(d.out, i18n.T("dbg.hitBreak", n))
+			if b, ok := d.bps[d.c.RIP]; ok && b.enabled {
+				fmt.Fprintln(d.out, i18n.T("dbg.hitBreak", b.n))
+				if b.temp {
+					delete(d.bps, d.c.RIP)
+				}
 				return
 			}
 			if stop != nil && stop() {
@@ -205,6 +225,16 @@ func (d *stepper) next() {
 // another file ("util.asm:5"), a label or an address — into a code address
 // and a description.
 func (d *stepper) resolve(arg string) (uint64, string, error) {
+	if strings.HasPrefix(arg, "*") { // gdb: break *0x8049005
+		a, err := d.eval(arg[1:])
+		if err != nil {
+			return 0, "", err
+		}
+		if !d.c.InCode(a) {
+			return 0, "", errors.New(i18n.T("dbg.notCode", arg[1:]))
+		}
+		return a, d.p.Where(a), nil
+	}
 	file, lineArg := 0, arg
 	if i := strings.LastIndexByte(arg, ':'); i > 0 {
 		f, ok := d.p.FileIndex(arg[:i])
@@ -234,7 +264,15 @@ func (d *stepper) resolve(arg string) (uint64, string, error) {
 	return a, d.p.Where(a), nil
 }
 
-func (d *stepper) breakCmd(args []string) {
+// breakpoint is a code breakpoint; temp ones (tbreak, until) delete
+// themselves when hit.
+type breakpoint struct {
+	n       int
+	temp    bool
+	enabled bool
+}
+
+func (d *stepper) breakCmd(args []string, temp bool) {
 	if len(args) == 0 {
 		if len(d.bps) == 0 {
 			fmt.Fprintln(d.out, i18n.T("dbg.noBreaks"))
@@ -244,8 +282,8 @@ func (d *stepper) breakCmd(args []string) {
 			addr uint64
 		}
 		var list []bp
-		for a, n := range d.bps {
-			list = append(list, bp{n, a})
+		for a, b := range d.bps {
+			list = append(list, bp{b.n, a})
 		}
 		sort.Slice(list, func(i, j int) bool { return list[i].n < list[j].n })
 		for _, b := range list {
@@ -258,26 +296,32 @@ func (d *stepper) breakCmd(args []string) {
 		fmt.Fprintln(d.out, err)
 		return
 	}
-	if n, ok := d.bps[a]; ok {
-		fmt.Fprintln(d.out, i18n.T("dbg.breakSet", n, desc))
+	if b, ok := d.bps[a]; ok {
+		b.enabled = true
+		fmt.Fprintln(d.out, i18n.T("dbg.breakSet", b.n, desc))
 		return
 	}
 	d.nextBP++
-	d.bps[a] = d.nextBP
+	d.bps[a] = &breakpoint{n: d.nextBP, temp: temp, enabled: true}
 	fmt.Fprintln(d.out, i18n.T("dbg.breakSet", d.nextBP, desc))
 }
 
 func (d *stepper) deleteCmd(args []string) {
 	if len(args) == 0 {
-		d.bps = map[uint64]int{}
+		d.bps = map[uint64]*breakpoint{}
 		d.watches = nil
 		fmt.Fprintln(d.out, i18n.T("dbg.breaksCleared"))
 		return
 	}
-	arg := strings.TrimPrefix(args[0], "#")
-	if n, err := strconv.Atoi(arg); err == nil {
+	for _, arg := range args {
+		d.deleteOne(arg)
+	}
+}
+
+func (d *stepper) deleteOne(arg string) {
+	if n, err := strconv.Atoi(strings.TrimPrefix(arg, "#")); err == nil {
 		for a, b := range d.bps {
-			if b == n {
+			if b.n == n {
 				delete(d.bps, a)
 				fmt.Fprintln(d.out, i18n.T("dbg.breakDeleted", n))
 				return
@@ -291,14 +335,14 @@ func (d *stepper) deleteCmd(args []string) {
 			}
 		}
 	}
-	if a, _, err := d.resolve(args[0]); err == nil {
-		if n, ok := d.bps[a]; ok {
+	if a, _, err := d.resolve(arg); err == nil {
+		if b, ok := d.bps[a]; ok {
 			delete(d.bps, a)
-			fmt.Fprintln(d.out, i18n.T("dbg.breakDeleted", n))
+			fmt.Fprintln(d.out, i18n.T("dbg.breakDeleted", b.n))
 			return
 		}
 	}
-	fmt.Fprintln(d.out, i18n.T("dbg.noSuchBreak", args[0]))
+	fmt.Fprintln(d.out, i18n.T("dbg.noSuchBreak", arg))
 }
 
 func (d *stepper) memCmd(args []string) {

@@ -369,3 +369,29 @@ _start:
 		t.Errorf("$nosuch should fail")
 	}
 }
+
+func TestGdbInfoAndPrint(t *testing.T) {
+	out, _ := session(t, "s\ninfo registers\ni r eax eflags al\np/x $eax\np/t $eax\np/d -1\np/c 65\np $eflags\np/x (int)msg\nbreak *0x08049005\nb fact\ninfo breakpoints\nq\n")
+	for _, w := range []string{
+		"eax            0x4                4\n",
+		"esp            0xfffd",
+		"eip            0x8049005          0x8049005 <_start+5>",
+		"eflags         0x202              [ IF ]",
+		"cs             0x23               35",
+		"al             0x4                4",
+		"$1 = 0x4",
+		"$2 = 100",
+		"$3 = -1",
+		"$4 = 65 'A'",
+		"$5 = [ IF ]",
+		"$6 = 0x656e6f64", // "done" read as an int
+		"breakpoint #1 at line 8: call fact",
+		"Num     Type           Disp Enb Address    What",
+		"1       breakpoint     keep y   0x08049005 line 8: call fact",
+		"2       breakpoint     keep y",
+	} {
+		if !strings.Contains(out, w) {
+			t.Errorf("output lacks %q:\n%s", w, out)
+		}
+	}
+}

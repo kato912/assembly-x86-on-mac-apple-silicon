@@ -197,6 +197,8 @@ nasmx86 รันโปรแกรมแอสเซมบลีล้วน �
 	"dbg.watchHit":      {en: "watchpoint #%d: %s changed %s → %s\n    by %s", th: "watchpoint #%d: %s เปลี่ยนจาก %s → %s\n    โดย %s"},
 	"dbg.watchDeleted":  {en: "watchpoint #%d deleted", th: "ลบ watchpoint #%d แล้ว"},
 	"dbg.noWatches":     {en: "no watchpoints", th: "ยังไม่มี watchpoint"},
+	"dbg.badRegister":   {en: "no register named %q", th: "ไม่มีรีจิสเตอร์ชื่อ %q"},
+	"dbg.infoUsage":     {en: "info registers [names] | info breakpoints | info display | info frame", th: "info registers [ชื่อ] | info breakpoints | info display | info frame"},
 	"dbg.memUsage":      {en: "usage: m <address|label|register> [length]", th: "วิธีใช้: m <แอดเดรส|label|รีจิสเตอร์> [ความยาว]"},
 	"dbg.unreadable":    {en: "memory at %s is not readable", th: "อ่านหน่วยความจำที่ %s ไม่ได้"},
 	"dbg.retAddr":       {en: "return address → line %d", th: "return address → บรรทัด %d"},
