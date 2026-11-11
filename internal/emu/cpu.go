@@ -378,10 +378,12 @@ func unsupported(c *CPU, in *x86asm.Inst) error {
 	return &Fault{Kind: FaultUnsupported}
 }
 
-// ccOf maps Jcc/SETcc/CMOVcc opcodes to their 4-bit condition code.
-var ccOf = map[x86asm.Op]int{}
+// ccOf maps Jcc/SETcc/CMOVcc opcodes to their 4-bit condition code. It is
+// built during package variable initialization, before any init() runs.
+var ccOf = buildCondTable()
 
-func init() {
+func buildCondTable() map[x86asm.Op]int {
+	t := map[x86asm.Op]int{}
 	codes := map[string]int{"O": 0, "NO": 1, "B": 2, "AE": 3, "E": 4, "NE": 5, "BE": 6, "A": 7,
 		"S": 8, "NS": 9, "P": 10, "NP": 11, "L": 12, "GE": 13, "LE": 14, "G": 15}
 	for op := x86asm.Op(1); op < 4096; op++ {
@@ -392,9 +394,10 @@ func init() {
 		for _, p := range []string{"J", "SET", "CMOV"} {
 			if strings.HasPrefix(name, p) {
 				if cc, ok := codes[name[len(p):]]; ok {
-					ccOf[op] = cc
+					t[op] = cc
 				}
 			}
 		}
 	}
+	return t
 }
