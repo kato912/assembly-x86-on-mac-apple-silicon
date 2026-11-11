@@ -68,6 +68,24 @@ func TestParseListing(t *testing.T) {
 	}
 }
 
+func TestParseListingOverflowingData(t *testing.T) {
+	// 9 data bytes print as 19 characters, pushing the <1> marker right.
+	lst := `     1                                  %include "x.inc"
+     1                              <1> section .data
+     2 00000000 303132333435363738- <1> hex: db "0123456789abcdef"
+     2 00000009 39616263646566      <1>
+     3                              <1> section .text
+     4 00000000 9C                  <1>     pushfq
+`
+	lm, _ := ParseListing(strings.NewReader(lst))
+	if loc, ok := lm.Lookup(".text", 0); !ok || loc.File != "x.inc" || loc.Line != 4 || loc.Text != "pushfq" || loc.Macro != "" {
+		t.Errorf("got %+v", loc)
+	}
+	if loc, _ := lm.Lookup(".data", 9); loc.File != "x.inc" || loc.Line != 2 || loc.Text != `hex: db "0123456789abcdef"` {
+		t.Errorf("data continuation: %+v", loc)
+	}
+}
+
 func TestParseListingFromNasm(t *testing.T) {
 	path, err := Find()
 	if err != nil {

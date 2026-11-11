@@ -219,21 +219,22 @@ func parseListingLine(s string) (num int, off uint64, hasOff bool, data string, 
 	if len(rest) >= 9 && isHex(rest[:8]) && rest[8] == ' ' {
 		off, _ = strconv.ParseUint(rest[:8], 16, 64)
 		hasOff = true
+		// The data column is nominally 18 characters wide but nasm lets it
+		// overflow (e.g. 9 bytes = "…38-"), so find its end: the first space
+		// that is not inside a "<res 4h>"-style annotation.
 		d := rest[9:]
-		end := 18
-		if len(d) < end {
-			end = len(d)
-		}
-		// The data column overflows its 18 characters only rarely; then it
-		// ends at the first double space.
-		if len(d) > 18 && d[18] != ' ' {
-			if k := strings.Index(d[18:], "  "); k >= 0 {
-				end = 18 + k
-			} else {
-				end = len(d)
+		end, depth := 0, 0
+		for ; end < len(d); end++ {
+			c := d[end]
+			if c == '<' {
+				depth++
+			} else if c == '>' && depth > 0 {
+				depth--
+			} else if c == ' ' && depth == 0 {
+				break
 			}
 		}
-		data = strings.TrimSpace(d[:end])
+		data = d[:end]
 		rest = d[end:]
 	} else if len(rest) > 27 {
 		rest = rest[27:]
