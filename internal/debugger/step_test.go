@@ -324,3 +324,48 @@ again:
 		t.Errorf("exit code %d", code)
 	}
 }
+
+func TestGdbExpressions(t *testing.T) {
+	p, _, _ := build(t, `
+section .data
+arr: dd 10, -20, 30, 40
+msg: db "Hi!", 0
+section .text
+global _start
+_start:
+    mov ecx, 2
+    mov eax, 1
+    int 0x80
+`, "")
+	d := &stepper{p: p, c: p.CPU}
+	d.s = NewSession(p)
+	d.s.Step()
+	d.s.Step()
+	arr := mustSym(t, p, "arr")
+	cases := map[string]uint64{
+		"$ecx":                       2,
+		"$pc":                        p.CPU.RIP,
+		"$sp":                        p.CPU.SP(),
+		"&arr":                       arr,
+		"(int)arr":                   10,
+		"*(int*)&arr":                10,
+		"*(int*)(&arr + 4)":          0xffffffec, // -20 as a 4-byte value
+		"*(short*)&arr":              10,
+		"{int}(&arr + 8)":            30,
+		"*(char*)&msg":               'H',
+		"(char)0x141":                0x41,
+		"(unsigned char)$ecx":        2,
+		"*(int*)($sp)":               1, // argc
+		"$ecx * 4 + 1":               9,
+		"*(unsigned long long*)&arr": 0xffffffec0000000a,
+	}
+	for expr, want := range cases {
+		got, err := d.eval(expr)
+		if err != nil || got != want {
+			t.Errorf("eval(%q) = %#x, %v; want %#x", expr, got, err, want)
+		}
+	}
+	if _, err := d.eval("$nosuch"); err == nil {
+		t.Errorf("$nosuch should fail")
+	}
+}
