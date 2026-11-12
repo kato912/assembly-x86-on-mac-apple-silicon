@@ -24,6 +24,7 @@ const (
 	FaultBreakpoint                     // int3
 	FaultMaxSteps                       // instruction limit reached (infinite loop?)
 	FaultPrivileged                     // kernel-only instruction
+	FaultLibc                           // misuse of a C library function (Detail explains)
 )
 
 // Fault is a CPU exception or other abnormal stop. It carries raw facts;
@@ -42,8 +43,13 @@ type Fault struct {
 		Size            int // operand size in bytes
 		Signed          bool
 	}
-	Steps uint64
-	Bytes []byte // raw bytes for FaultInvalid
+	Steps    uint64
+	Bytes    []byte // raw bytes for FaultInvalid
+	Detail   string // message key for FaultLibc
+	Args     []any  // its arguments
+	Hint     string // optional hint key for FaultLibc
+	HintArgs []any
+	Sig      int // signal to report instead of the default
 }
 
 // RegValue is a register name and its value at the time of a fault.
@@ -83,12 +89,17 @@ func (f *Fault) Error() string {
 		return fmt.Sprintf("instruction limit reached (%d)", f.Steps)
 	case FaultPrivileged:
 		return "privileged instruction"
+	case FaultLibc:
+		return f.Detail
 	}
 	return "fault"
 }
 
 // Signal returns the Linux signal number a native run would die with.
 func (f *Fault) Signal() int {
+	if f.Sig != 0 {
+		return f.Sig
+	}
 	switch f.Kind {
 	case FaultDivZero, FaultDivOverflow:
 		return 8 // SIGFPE

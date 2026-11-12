@@ -37,6 +37,9 @@ type Linux struct {
 	Warn func(key string, args ...any)
 	// Trace, when set, receives a one-line description of every system call.
 	Trace func(desc string)
+	// BeforeExit, when set, runs when the program calls exit/exit_group
+	// (the C library flushes or reports its buffered output there).
+	BeforeExit func(c *CPU)
 
 	files  map[int]*fdEntry
 	warned map[uint64]bool
@@ -136,6 +139,9 @@ func (l *Linux) Syscall(c *CPU, int80 bool) error {
 func (l *Linux) dispatch(c *CPU, name string, int80 bool, a [6]uint64) (ret int64, desc string, ok bool, err error) {
 	switch name {
 	case "exit", "exit_group":
+		if l.BeforeExit != nil {
+			l.BeforeExit(c)
+		}
 		code := int(a[0] & 0xff)
 		return 0, fmt.Sprintf("%s(%d)", name, int32(a[0])), true, &Exit{Code: code}
 	case "write":

@@ -128,6 +128,10 @@ func (l *Linux) sysOpen(c *CPU, pathPtr, flags, mode uint64) (int64, string) {
 		return -EFAULT, fmt.Sprintf("open(%#x, %#o, %#o)", pathPtr, flags, mode)
 	}
 	desc := fmt.Sprintf("open(%q, %#o, %#o)", path, flags&0xffffffff, mode&0o7777)
+	return l.open(path, flags, mode), desc
+}
+
+func (l *Linux) open(path string, flags, mode uint64) int64 {
 	var gf int
 	switch flags & 3 {
 	case 0:
@@ -151,7 +155,7 @@ func (l *Linux) sysOpen(c *CPU, pathPtr, flags, mode uint64) (int64, string) {
 	}
 	f, err := os.OpenFile(path, gf, os.FileMode(mode&0o777))
 	if err != nil {
-		return -errno(err), desc
+		return -errno(err)
 	}
 	e := &fdEntry{f: f}
 	if flags&3 != oWRONLY {
@@ -160,7 +164,7 @@ func (l *Linux) sysOpen(c *CPU, pathPtr, flags, mode uint64) (int64, string) {
 	if flags&3 != 0 {
 		e.w = f
 	}
-	return int64(l.newFD(e)), desc
+	return int64(l.newFD(e))
 }
 
 func (l *Linux) sysUnlink(c *CPU, pathPtr uint64) (int64, string) {
@@ -256,4 +260,68 @@ func (l *Linux) sysTime(c *CPU, tloc uint64, int80 bool) (int64, string) {
 		t = int64(int32(t))
 	}
 	return t, desc
+}
+
+// The methods below give the built-in C library access to the process's
+// files, the same ones the system calls use.
+
+// WriteFD writes to file descriptor fd.
+func (l *Linux) WriteFD(fd int, b []byte) (int, error) {
+	e := l.files[fd]
+	if e == nil || e.w == nil {
+		return 0, os.ErrClosed
+	}
+	return e.w.Write(b)
+}
+
+// ReadFD reads from file descriptor fd.
+func (l *Linux) ReadFD(fd int, b []byte) (int, error) {
+	e := l.files[fd]
+	if e == nil || e.r == nil {
+		return 0, os.ErrClosed
+	}
+	return e.r.Read(b)
+}
+
+// OpenFile opens path with Linux open(2) flags and returns the new file
+// descriptor or a negative errno.
+func (l *Linux) OpenFile(path string, flags, mode uint64) int64 {
+	return l.open(path, flags, mode)
+}
+
+// CloseFD closes fd, returning 0 or a negative errno.
+func (l *Linux) CloseFD(fd int) int64 {
+	r, _ := l.sysClose(fd)
+	return r
+}
+
+// SeekFD is lseek(2).
+func (l *Linux) SeekFD(fd int, off int64, whence int) int64 {
+	r, _ := l.sysLseek(fd, off, whence)
+	return r
+}
+
+// Brk is the brk system call (used by malloc).
+func (l *Linux) Brk(c *CPU, addr uint64) uint64 { return l.sysBrk(c, addr) }
+
+// IsTerminal reports whether fd is a terminal (the C library line-buffers
+// a terminal's output and fully buffers anything else).
+func (l *Linux) IsTerminal(fd int) bool {
+	e := l.files[fd]
+	if e == nil {
+		return false
+	}
+	var w any = e.w
+	if e.f != nil {
+		w = e.f
+	}
+	if fd == 0 {
+		w = e.r
+	}
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
 }

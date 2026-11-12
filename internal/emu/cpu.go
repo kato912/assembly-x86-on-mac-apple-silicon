@@ -52,6 +52,15 @@ type CPU struct {
 	// are reported as a stack overflow.
 	StackLimit uint64
 
+	// Native is an address range whose "code" is implemented in Go (the
+	// built-in C library). Reaching an address in it calls NativeCall,
+	// which must also perform the return to the caller.
+	Native     CodeRange
+	NativeCall func(c *CPU, pc uint64) error
+	// NativeRan names the C function the last step ran ("" if none); the
+	// native code sets it.
+	NativeRan string
+
 	pc, next uint64 // current instruction address and fall-through address
 	branched bool   // current instruction transferred control
 
@@ -154,6 +163,9 @@ func (c *CPU) Step() error {
 		return &Fault{Kind: FaultMaxSteps, PC: c.RIP, Steps: c.Steps}
 	}
 	pc := c.RIP
+	if c.NativeCall != nil && pc >= c.Native.Start && pc < c.Native.End {
+		return c.stepNative(pc)
+	}
 	d, err := c.fetch(pc)
 	if err != nil {
 		return err
@@ -163,8 +175,21 @@ func (c *CPU) Step() error {
 	c.RIP = c.next
 	c.branched = false
 	c.faultMem, c.faultStack = nil, false
+	c.NativeRan = ""
 	err = d.h(c, &d.inst)
 	c.Steps++
+	if err == nil && c.IsNative(c.RIP) {
+		// call printf (or jmp printf): run the C function right away, so
+		// the call behaves like one instruction, as stepping over it in
+		// gdb does.
+		target := c.RIP
+		if err = c.NativeCall(c, target); err != nil {
+			var ex *Exit
+			if !errors.As(err, &ex) && d.inst.Op == x86asm.CALL {
+				c.pop(c.Width()) // undo the call's push for the error report
+			}
+		}
+	}
 	if err != nil {
 		var ex *Exit
 		if errors.As(err, &ex) {
@@ -175,6 +200,66 @@ func (c *CPU) Step() error {
 	}
 	c.prevPC, c.prevLen, c.prevOp, c.prevBranched, c.havePrev = pc, d.inst.Len, d.inst.Op, c.branched, true
 	return nil
+}
+
+// IsNative reports whether addr is in the native (C library) range.
+func (c *CPU) IsNative(addr uint64) bool {
+	return c.NativeCall != nil && addr >= c.Native.Start && addr < c.Native.End
+}
+
+// stepNative runs a native function as one step; it returns to the caller.
+func (c *CPU) stepNative(pc uint64) error {
+	c.pc, c.next = pc, pc
+	c.branched = false
+	c.faultMem, c.faultStack = nil, false
+	c.NativeRan = ""
+	err := c.NativeCall(c, pc)
+	c.Steps++
+	if err != nil {
+		var ex *Exit
+		if errors.As(err, &ex) {
+			return err
+		}
+		c.RIP = pc
+		var mf *MemFault
+		if errors.As(err, &mf) {
+			return &Fault{Kind: FaultMemory, PC: pc, Mem: mf}
+		}
+		var f *Fault
+		if errors.As(err, &f) && f.PC == 0 {
+			f.PC = pc
+		}
+		return err
+	}
+	c.prevPC, c.prevLen, c.prevOp, c.prevBranched, c.havePrev = pc, 0, x86asm.RET, true, true
+	return nil
+}
+
+// PC returns the address of the instruction being executed (for system
+// call and native code hooks).
+func (c *CPU) PC() uint64 { return c.pc }
+
+// Return performs a "ret" for native code: it pops the return address.
+func (c *CPU) Return() error {
+	ra, err := c.pop(c.Width())
+	if err != nil {
+		return err
+	}
+	c.jump(ra)
+	return nil
+}
+
+// Arg returns the n-th (0-based) integer argument of a C call at entry to
+// the callee, following the System V AMD64 ABI in 64-bit mode (rdi, rsi,
+// rdx, rcx, r8, r9, then the stack) and cdecl in 32-bit mode (stack).
+func (c *CPU) Arg(n int) (uint64, error) {
+	if c.Mode == 64 {
+		if n < 6 {
+			return c.R[[]int{RDI, RSI, RDX, RCX, R8, R9}[n]], nil
+		}
+		return c.Mem.Read(c.SP()+8+uint64(n-6)*8, 8)
+	}
+	return c.Mem.Read(c.wrap(c.SP()+4+uint64(n)*4), 4)
 }
 
 // Run executes until the program exits or faults.
