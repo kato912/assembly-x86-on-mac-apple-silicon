@@ -34,8 +34,11 @@ brew install kato912/tap/nasmx86
 
 คำสั่งเดียวนี้ติดตั้งทุกอย่างที่วิชาต้องใช้:
 
-- `nasmx86` และ `nasm` สำหรับเขียนและรันโปรแกรม ไลบรารี C (`printf`, `scanf` ...),
-  รูปแบบคำสั่งของ YASM และดีบักเกอร์ `--step` / `--trace` มีอยู่ใน nasmx86 แล้ว
+- `nasmx86`, `nasm` และ `yasm` สำหรับเขียนและรันโปรแกรม ไลบรารี C (`printf`, `scanf` ...)
+  และดีบักเกอร์ `--step` / `--trace` มีอยู่ใน nasmx86 แล้ว
+- คำสั่งแบบ Linux ตามเอกสารประกอบวิชา: ในหน้าต่างเทอร์มินัล**ใหม่** พิมพ์ `ld -o hello hello.o`,
+  `./hello`, `gcc -o cprintf printf.o` และ `ddd ./hello &` ได้ตามที่เขียนไว้เลย
+  ([ด้านล่าง](#คำสั่งแบบ-linux-ตามที่เรียน))
 - ดีบักเกอร์ **DDD** และ `x86_64-elf-gdb` สำหรับ `nasmx86 --ddd` และ `nasmx86 --gdb`
 - **XQuartz** ระบบหน้าต่าง X11 ที่ DDD ใช้วาดหน้าจอ ตัวติดตั้งจะถามรหัสผ่านเครื่อง Mac หนึ่งครั้ง
   ติดตั้งเสร็จแล้วไม่ต้องออกจากระบบ เพราะ `nasmx86 --ddd` เปิด XQuartz ให้เอง
@@ -43,7 +46,8 @@ brew install kato912/tap/nasmx86
 Homebrew จะแสดงรายการที่จะติดตั้งแล้วถาม "Do you want to proceed with the installation?" ให้กด Enter
 จากนั้นพิมพ์รหัสผ่านเครื่อง Mac เมื่อถูกถาม (สำหรับ XQuartz)
 ไม่ต้องมีบัญชี Homebrew หรือล็อกอิน GitHub และใช้ได้แม้ Xcode จะเก่าหรือไม่ได้ติดตั้ง
-อัปเดตภายหลังด้วย `brew upgrade nasmx86` (ถ้าเคยติดตั้งเวอร์ชันก่อน v0.7.0 คำสั่งนี้จะลง DDD, gdb และ XQuartz ให้ด้วย)
+อัปเดตภายหลังด้วย `brew upgrade nasmx86` (ถ้าเคยติดตั้งเวอร์ชันก่อน v0.7.0 คำสั่งนี้จะลง DDD, gdb และ XQuartz ให้ด้วย
+ถ้าก่อน v0.8.0 จะลง yasm และคำสั่งแบบ Linux ให้ด้วย)
 
 ถ้าจะลบทั้งหมดออก:
 
@@ -51,8 +55,9 @@ Homebrew จะแสดงรายการที่จะติดตั้�
 brew uninstall nasmx86 xquartz
 ```
 
-Homebrew จะลบ `nasm`, DDD และ gdb ไปพร้อมกับ nasmx86 ยกเว้นตัวที่ติดตั้งเองไว้ก่อน
-หรือยังมีโปรแกรมอื่นใช้อยู่ ส่วน XQuartz ต้องพิมพ์ชื่อด้วย เพราะ Homebrew ไม่ลบแอป (cask) ให้เอง
+Homebrew จะลบ `nasm`, `yasm`, DDD และ gdb ไปพร้อมกับ nasmx86 ยกเว้นตัวที่ติดตั้งเองไว้ก่อน
+หรือยังมีโปรแกรมอื่นใช้อยู่ และเอาบรรทัดของ nasmx86 ออกจาก `~/.zshrc` ให้ด้วย
+ส่วน XQuartz ต้องพิมพ์ชื่อด้วย เพราะ Homebrew ไม่ลบแอป (cask) ให้เอง
 
 ### Linux (หรือ macOS ที่ไม่ใช้ Homebrew)
 
@@ -114,6 +119,41 @@ nasmx86 prog.asm arg1 arg2        # อาร์กิวเมนต์ส่�
 nasmx86 prog.asm; echo $?         # exit code คือ exit code ของโปรแกรม
 nasmx86 main.asm io.asm           # โปรแกรมที่แยกเป็นหลายไฟล์
 ```
+
+### คำสั่งแบบ Linux ตามที่เรียน
+
+เอกสารประกอบวิชาบน Linux จะ assemble, ลิงก์, รัน และดีบักทีละขั้น บน Mac หลัง
+`brew install kato912/tap/nasmx86` ให้เปิดหน้าต่างเทอร์มินัล**ใหม่** แล้วพิมพ์ตามเอกสารได้เลย:
+
+```bash
+yasm -f elf64 -g dwarf2 -o hello.o hello.s   # assemble (yasm หรือ nasm)
+ld -o hello hello.o                          # ลิงก์โปรแกรมที่เริ่มที่ _start
+./hello                                      # รัน
+ddd ./hello &                                # ดีบักใน DDD (หรือ gdb ./hello)
+```
+
+โปรแกรมที่มี `main` และเรียกฟังก์ชันภาษา C หรือโค้ด C ที่เรียกแอสเซมบลีของเรา ให้ลิงก์ด้วย `gcc`
+เหมือนบน Linux:
+
+```bash
+gcc -o cprintf printf.o          # main + printf จากไลบรารี C
+gcc main.c stats.o -o cstats     # main.c เรียกฟังก์ชันใน stats.s
+```
+
+ลิงก์หลายไฟล์ object (`ld -o prog a.o b.o`), โปรแกรม 32 บิต (`nasm -f elf32`,
+`ld -m elf_i386`, `gcc -m32`), `ld -e`, `-lc` และ `gdb --args ./prog a b` ใช้ได้เหมือนบน Linux
+ถ้า assemble ด้วย `-g dwarf2` (หรือ `-g -F dwarf` ของ nasm) ข้อความแจ้งข้อผิดพลาดจะบอกบรรทัดในซอร์สโค้ด
+และ DDD กับ gdb จะแสดงซอร์สโค้ดให้
+
+ทำงานอย่างไร: `brew install` เพิ่มไม่กี่บรรทัดใน `~/.zshrc` (`brew uninstall` เอาออกให้)
+เพื่อให้ `ld`, `gcc`, `ddd` และ `gdb` ของ nasmx86 มาก่อนใน `PATH` (ดูได้ด้วย `which ld`)
+คำสั่งเหล่านี้จัดการไฟล์ object ของ x86 Linux ส่วนงานของ Mac เอง เช่น `gcc -o prog prog.c`
+หรือไฟล์ object ของ Mac จะส่งต่อให้ `ld` และ `gcc` ของ Mac ตามเดิม
+การลิงก์จะเขียนไฟล์ `hello` เป็นสคริปต์เล็ก ๆ (`#!/usr/bin/env nasmx86`) ที่เก็บไฟล์ object ไว้
+`./hello` จึงรันโปรแกรมใน nasmx86 — Mac รันโปรแกรมของ Linux เองไม่ได้
+ไฟล์ภาษา C จะคอมไพล์ด้วย clang ของ Mac สำหรับ x86 Linux (เฉพาะโค้ดที่ใช้จำนวนเต็ม เพราะ nasmx86
+ไม่มีทศนิยม) ถ้าไม่ได้ใช้ Homebrew ให้รัน `nasmx86 setup` ครั้งเดียว (ยกเลิกด้วย `nasmx86 setup --remove`)
+หรือพิมพ์ `nasmx86 ld ...`, `nasmx86 gcc ...` แล้วรันผลลัพธ์ด้วย `nasmx86 hello`
 
 ดูตัวอย่างเพิ่มเติมได้ที่ [`examples/`](examples): รับ input, ลูป, อาร์เรย์,
 ฟังก์ชันที่ส่งพารามิเตอร์ทางสแตก, การเรียกซ้ำ (factorial), โปรแกรมที่แยกสองไฟล์
@@ -184,9 +224,11 @@ ispunct isprint`, `time sleep usleep`
 
 ### YASM
 
-เอกสารประกอบการเรียนที่เขียนสำหรับ YASM ก็รันได้: nasmx86 รับคำสั่งแบบ yasm
-(`nasmx86 -f elf64 -g dwarf2 prog.asm` โดย `-o`/`-l` จะถูกข้าม), ไฟล์ `.s`
-และคำสั่ง `ddq`/`resdq` ของ YASM ตัวโค้ดถูกแปลงด้วย NASM ซึ่งใช้ syntax เดียวกับ YASM
+เอกสารประกอบการเรียนที่เขียนสำหรับ YASM ก็รันได้ `brew install` ติดตั้ง `yasm` ตัวจริงมาให้
+สำหรับ[คำสั่งแบบ Linux](#คำสั่งแบบ-linux-ตามที่เรียน) (`yasm -f elf64 -g dwarf2 -o hello.o hello.s`
+และ `-l hello.lst` สำหรับไฟล์ listing) ส่วน `nasmx86 prog.s` ก็รับคำสั่งแบบ yasm
+(`nasmx86 -f elf64 -g dwarf2 prog.s` โดย `-o`/`-l` จะถูกข้าม), ไฟล์ `.s`
+และคำสั่ง `ddq`/`resdq` ของ YASM ได้เช่นกัน โดยแปลงด้วย NASM ซึ่งใช้ syntax เดียวกับ YASM
 
 ### 32 หรือ 64 บิต?
 
@@ -310,7 +352,8 @@ returned from fact: eax = 0x00000001 (1)
 
 ### DDD และ gdb
 
-`nasmx86 --ddd prog.asm` เปิดโปรแกรมใน **DDD** ดีบักเกอร์แบบกราฟิกที่หลายวิชาแอสเซมบลีใช้ —
+`ddd ./hello &` (หลัง `ld`/`gcc` ดู[คำสั่งแบบ Linux](#คำสั่งแบบ-linux-ตามที่เรียน))
+หรือ `nasmx86 --ddd prog.asm` เปิดโปรแกรมใน **DDD** ดีบักเกอร์แบบกราฟิกที่หลายวิชาแอสเซมบลีใช้ —
 เป็น DDD ตัวจริงที่ทำงานบน gdb ตัวจริง จึงใช้คำสั่งตามเอกสารแล็บได้เลย (`break`, `run`, `step`,
 `next`, `display`, `x/4dw &arr`, `info registers` ...) nasmx86 ทำหน้าที่แทนเครื่อง Linux:
 รันโปรแกรม แล้วให้ gdb ควบคุมผ่านโปรโตคอล remote ของ gdb เหมือนตอนใช้ `gdbserver`
@@ -377,8 +420,8 @@ clock_gettime nanosleep exit exit_group` ตัวอื่นจะคืนค
 ## ข้อจำกัด
 
 - ไลบรารี C ในตัวมีฟังก์ชันตามรายการ[ด้านบน](#เรียกฟังก์ชันภาษา-c-printf-scanf-)
-  (ไม่มี `%f` ในโหมด 64 บิต ไม่มี locale หรือ wide character) และไม่คอมไพล์ไฟล์ภาษา C
-  (เช่น `main.c` ที่เรียกโค้ดแอสเซมบลี) — nasmx86 รันเฉพาะแอสเซมบลี
+  (ไม่มี `%f` ในโหมด 64 บิต ไม่มี locale หรือ wide character) ไฟล์ภาษา C ที่ให้ `gcc`
+  จะคอมไพล์ด้วย clang ของ Mac ใช้ฟังก์ชันเหล่านั้นและชนิดจำนวนเต็มได้ แต่ใช้ `float`/`double` ไม่ได้
 - รองรับเฉพาะ syntax ของ NASM สำหรับ Linux: ไม่รองรับ MASM/TASM, GAS (AT&T), โปรแกรม DOS (`int 21h`) หรือ Windows
 - ไม่รองรับทศนิยม (x87), SSE/AVX และคำสั่งสิทธิ์พิเศษ
 - ทำงานเธรดเดียว ไม่มี signal, `mmap`, `fork`, socket

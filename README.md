@@ -34,9 +34,11 @@ brew install kato912/tap/nasmx86
 
 That one command installs everything the course needs:
 
-- `nasmx86` and `nasm`, to write and run programs. The C library (`printf`,
-  `scanf`, ...), YASM's command line and the `--step` / `--trace` debuggers
-  are built in.
+- `nasmx86`, `nasm` and `yasm`, to write and run programs. The C library
+  (`printf`, `scanf`, ...) and the `--step` / `--trace` debuggers are built in.
+- The Linux commands from course sheets: in a **new** terminal window,
+  `ld -o hello hello.o`, `./hello`, `gcc -o cprintf printf.o` and
+  `ddd ./hello &` work as typed ([below](#linux-commands-as-in-your-course)).
 - The **DDD** debugger and `x86_64-elf-gdb`, for `nasmx86 --ddd` and
   `nasmx86 --gdb`.
 - **XQuartz**, the X11 window system DDD draws with. Its installer asks for
@@ -47,7 +49,8 @@ Homebrew first lists what it will install and asks "Do you want to proceed
 with the installation?": press Enter. Then type your Mac password when
 asked (for XQuartz). No Homebrew account or GitHub login is needed, and it
 works even if Xcode is outdated or not installed. Update later with `brew upgrade nasmx86` (if you
-installed nasmx86 before v0.7.0, this also adds DDD, gdb and XQuartz).
+installed nasmx86 before v0.7.0, this also adds DDD, gdb and XQuartz; before
+v0.8.0, it also adds yasm and the Linux commands).
 
 To remove it all again:
 
@@ -55,9 +58,10 @@ To remove it all again:
 brew uninstall nasmx86 xquartz
 ```
 
-Homebrew removes `nasm`, DDD and gdb together with nasmx86, unless you
-installed one of them yourself or another program still needs it. XQuartz
-has to be named, because Homebrew never removes an app (a cask) by itself.
+Homebrew removes `nasm`, `yasm`, DDD and gdb together with nasmx86, unless
+you installed one of them yourself or another program still needs it, and
+takes nasmx86's lines out of `~/.zshrc`. XQuartz has to be named, because
+Homebrew never removes an app (a cask) by itself.
 
 ### Linux (or macOS without Homebrew)
 
@@ -120,6 +124,45 @@ nasmx86 prog.asm arg1 arg2        # arguments go to the program (argc/argv on th
 nasmx86 prog.asm; echo $?         # the exit code is the program's exit code
 nasmx86 main.asm io.asm           # a program split over several files
 ```
+
+### Linux commands, as in your course
+
+Course sheets for Linux assemble, link, run and debug in separate steps. On a
+Mac, after `brew install kato912/tap/nasmx86`, open a **new** terminal
+window and type them as written:
+
+```bash
+yasm -f elf64 -g dwarf2 -o hello.o hello.s   # assemble (yasm or nasm)
+ld -o hello hello.o                          # link a program that starts at _start
+./hello                                      # run it
+ddd ./hello &                                # debug it in DDD (or: gdb ./hello)
+```
+
+A program with `main` that calls C functions, or C code that calls your
+assembly, is linked with `gcc`, as on Linux:
+
+```bash
+gcc -o cprintf printf.o          # main + printf from the C library
+gcc main.c stats.o -o cstats     # main.c calls the function in stats.s
+```
+
+Several object files (`ld -o prog a.o b.o`), 32-bit programs
+(`nasm -f elf32`, `ld -m elf_i386`, `gcc -m32`), `ld -e`, `-lc` and
+`gdb --args ./prog a b` work as on Linux. Assembled with `-g dwarf2` (or
+nasm's `-g -F dwarf`), error messages name the source line, and DDD and gdb
+show the source.
+
+How it works: `brew install` adds a few lines to `~/.zshrc` (`brew
+uninstall` takes them out) that put nasmx86's `ld`, `gcc`, `ddd` and `gdb`
+first on your `PATH` (`which ld` shows where). They handle x86 Linux object
+files; anything for the Mac itself, such as `gcc -o prog prog.c` or a Mac
+object file, goes to the Mac's own `ld` and `gcc` unchanged. Linking writes
+`hello` as a small script (`#!/usr/bin/env nasmx86`) holding the object
+files, so `./hello` runs the program in nasmx86 — a Mac cannot run a Linux
+program itself. C files are compiled with the Mac's clang for x86 Linux
+(integer code only: nasmx86 has no floating point). Without Homebrew, run
+`nasmx86 setup` once (and `nasmx86 setup --remove` to undo it), or type
+`nasmx86 ld ...`, `nasmx86 gcc ...` and run the result with `nasmx86 hello`.
 
 More examples are in [`examples/`](examples): reading input, loops, arrays,
 functions with stack arguments, recursion (factorial), a program split over
@@ -195,10 +238,13 @@ print fine. `call printf wrt ..plt` and `call [rel printf wrt ..got]` work too.
 
 ### YASM
 
-Course material written for YASM runs too: nasmx86 accepts yasm's command
-line (`nasmx86 -f elf64 -g dwarf2 prog.asm`, `-o`/`-l` are ignored), `.s`
-files, and YASM's `ddq`/`resdq` directives. The source is assembled with
-NASM, whose syntax YASM shares.
+Course material written for YASM runs too. `brew install` brings the real
+`yasm`, for the [Linux commands](#linux-commands-as-in-your-course)
+(`yasm -f elf64 -g dwarf2 -o hello.o hello.s`, `-l hello.lst` for a
+listing). `nasmx86 prog.s` on its own also accepts yasm's command line
+(`nasmx86 -f elf64 -g dwarf2 prog.s`, `-o`/`-l` are ignored), `.s` files and
+YASM's `ddq`/`resdq` directives: it assembles with NASM, whose syntax YASM
+shares.
 
 ### 32 or 64 bit?
 
@@ -322,7 +368,8 @@ returned from fact: eax = 0x00000001 (1)
 
 ### DDD and gdb
 
-`nasmx86 --ddd prog.asm` opens your program in **DDD**, the graphical
+`ddd ./hello &` (after `ld`/`gcc`, see [Linux commands](#linux-commands-as-in-your-course))
+or `nasmx86 --ddd prog.asm` opens your program in **DDD**, the graphical
 debugger many assembly courses use — the real DDD with the real gdb
 underneath, so lab sheets work as written (`break`, `run`, `step`, `next`,
 `display`, `x/4dw &arr`, `info registers`...). nasmx86 plays the part of
@@ -399,8 +446,9 @@ warning.
 ## Limitations
 
 - The built-in C library has the functions listed [above](#calling-c-functions-printf-scanf-)
-  (no `%f` in 64-bit mode, no locales or wide characters). C source files
-  (calling your assembly from `main.c`) are not compiled — nasmx86 runs assembly.
+  (no `%f` in 64-bit mode, no locales or wide characters). C files given to
+  `gcc` are compiled with the Mac's clang; they may use those functions and
+  integer types, not `float`/`double`.
 - NASM syntax for Linux only: not MASM/TASM, GAS (AT&T), DOS (`int 21h`) or Windows programs.
 - No floating point (x87), SSE/AVX, or privileged instructions.
 - Single-threaded; no signals, `mmap`, `fork`, sockets.
