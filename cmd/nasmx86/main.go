@@ -37,8 +37,8 @@ func (e usageError) Error() string { return string(e) }
 
 func main() {
 	i18n.Init()
-	// Started as ld, gcc, ddd or gdb (links to nasmx86 first on PATH), or
-	// with a subcommand such as nasmx86 ld.
+	// Started as ld, gcc, ddd or gdb (links to nasmx86 that nasmx86 setup
+	// puts first on PATH), or with a subcommand such as nasmx86 setup.
 	if code, ok := runTool(filepath.Base(os.Args[0]), os.Args[1:]); ok {
 		os.Exit(code)
 	}
@@ -82,9 +82,15 @@ func runTool(name string, args []string) (int, bool) {
 	return 0, false
 }
 
-// subcommand handles nasmx86 ld (or gcc, ddd, gdb) for systems where
-// those names are not links to nasmx86.
+// subcommand handles nasmx86 setup, nasmx86 shellenv, and nasmx86 ld (or
+// gcc, ddd, gdb) for systems where those names are not links to nasmx86.
 func subcommand(name string, args []string) (int, bool) {
+	switch name {
+	case "setup":
+		return setupMain(args), true
+	case "shellenv":
+		return shellenvMain(args), true
+	}
 	for _, t := range toolNames {
 		if name == t {
 			if _, err := os.Stat(name); err == nil {

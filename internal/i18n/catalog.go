@@ -30,6 +30,13 @@ examples:
   nasmx86 -f elf32 hello.asm
   nasmx86 main.asm io.asm
   echo 5 | nasmx86 fact.asm
+
+Linux commands, as in course sheets (on a Mac, brew install sets up ld,
+gcc, ddd and gdb for new terminal windows; or type nasmx86 ld ..., etc.):
+  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  ld -o hello hello.o            gcc -o cprintf printf.o (main + C library)
+  ./hello                        gcc main.c stats.o -o cstats (C + assembly)
+  ddd ./hello &                  gdb ./hello
 `, th: `วิธีใช้: nasmx86 [ตัวเลือก] ไฟล์.asm [ไฟล์อื่น.asm ...] [อาร์กิวเมนต์ของโปรแกรม...]
 
 แปลง (assemble) ลิงก์ และรันโปรแกรม NASM ของ Linux แบบ 32 หรือ 64 บิต ในคำสั่งเดียว
@@ -58,6 +65,13 @@ examples:
   nasmx86 -f elf32 hello.asm
   nasmx86 main.asm io.asm
   echo 5 | nasmx86 fact.asm
+
+คำสั่งแบบ Linux ตามเอกสารประกอบวิชา (บน Mac, brew install ตั้งค่า ld, gcc, ddd
+และ gdb ให้หน้าต่างเทอร์มินัลใหม่แล้ว หรือพิมพ์ nasmx86 ld ... เป็นต้น):
+  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  ld -o hello hello.o            gcc -o cprintf printf.o (main + ไลบรารี C)
+  ./hello                        gcc main.c stats.o -o cstats (C + แอสเซมบลี)
+  ddd ./hello &                  gdb ./hello
 `},
 	"err.prefix":        {en: "nasmx86: "},
 	"err.noFile":        {en: "no .asm file given", th: "ไม่ได้ระบุไฟล์ .asm"},
@@ -117,6 +131,39 @@ examples:
 	"err.unsupportedOption": {en: "%[2]s is not supported by nasmx86's %[1]s", th: "%[1]s ของ nasmx86 ไม่รองรับตัวเลือก %[2]s"},
 	"err.writeOutput":       {en: "cannot write %s: %v", th: "เขียนไฟล์ %s ไม่ได้: %v"},
 	"gdb.failed":            {en: "gdb stopped: %v", th: "gdb หยุดทำงาน: %v"},
+
+	// nasmx86 setup
+	"setup.usage": {en: `usage: nasmx86 setup [--remove]
+
+Makes ld, gcc, ddd and gdb in new terminal windows work as on Linux for x86
+programs, so course commands work as typed on a Mac:
+  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  ld -o hello hello.o
+  ./hello
+  ddd ./hello &
+It adds a few lines to ~/.zshrc (brew install nasmx86 runs it for you).
+For a Mac's own programs, ld and gcc still run the Mac's ld and gcc.
+
+  --remove   take the lines out again (brew uninstall nasmx86 does this)
+`, th: `วิธีใช้: nasmx86 setup [--remove]
+
+ทำให้ ld, gcc, ddd และ gdb ในหน้าต่างเทอร์มินัลใหม่ทำงานเหมือนบน Linux สำหรับโปรแกรม x86
+คำสั่งในวิชาจึงพิมพ์บน Mac ได้ตามเดิม:
+  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  ld -o hello hello.o
+  ./hello
+  ddd ./hello &
+โดยเพิ่มไม่กี่บรรทัดใน ~/.zshrc (brew install nasmx86 ทำให้เองแล้ว)
+ส่วนโปรแกรมของ Mac เอง ld และ gcc ยังเรียก ld และ gcc ของ Mac ตามเดิม
+
+  --remove   เอาบรรทัดเหล่านั้นออก (brew uninstall nasmx86 ทำให้เอง)
+`},
+	"setup.added": {en: "ld, gcc, ddd and gdb for x86 Linux programs are set up in %s: open a new terminal window to use them",
+		th: "ตั้งค่า ld, gcc, ddd และ gdb สำหรับโปรแกรม x86 Linux ไว้ใน %s แล้ว: เปิดหน้าต่างเทอร์มินัลใหม่เพื่อใช้งาน"},
+	"setup.removed":     {en: "removed nasmx86's lines from %s", th: "เอาบรรทัดของ nasmx86 ออกจาก %s แล้ว"},
+	"setup.cannotWrite": {en: "cannot change %s: %v", th: "แก้ไฟล์ %s ไม่ได้: %v"},
+	"setup.notNeeded": {en: "not needed here: this system has its own ld and gcc for Linux programs",
+		th: "ไม่จำเป็นบนระบบนี้: มี ld และ gcc สำหรับโปรแกรม Linux อยู่แล้ว"},
 	"err.noClang": {en: "compiling C needs the Mac's C compiler (clang). Install it once with:  xcode-select --install",
 		th: "การคอมไพล์ภาษา C ต้องใช้คอมไพเลอร์ C ของ Mac (clang) ติดตั้งครั้งเดียวด้วย:  xcode-select --install"},
 	"hint.cFloat": {en: "nasmx86 runs integer programs only: float and double (SSE and x87 instructions) are not supported",
