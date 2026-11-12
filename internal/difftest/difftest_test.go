@@ -123,6 +123,19 @@ func TestDifferential(t *testing.T) {
 			if !native {
 				return
 			}
+			if p.libc {
+				bits := p.bits
+				if bits == 0 {
+					src, _ := os.ReadFile(p.path)
+					bits, _ = nasm.DetectBitsFile(p.path, src, []string{p.incDir})
+				}
+				if ok, why := libcAvailable(bits); !ok {
+					if os.Getenv("NASMX86_REQUIRE_NATIVE") == "1" {
+						t.Fatalf("native comparison required but unavailable: %s", why)
+					}
+					t.Skipf("native comparison skipped: %s", why)
+				}
+			}
 			natOut, natCode, err := runNative(t, p)
 			if err != nil {
 				t.Fatalf("native build/run: %v", err)

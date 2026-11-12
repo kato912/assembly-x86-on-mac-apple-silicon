@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -26,6 +27,24 @@ func nativeAvailable() (bool, string) {
 	}
 	if _, err := exec.LookPath("ld"); err != nil {
 		return false, "ld (binutils) not installed"
+	}
+	return true, ""
+}
+
+// libcAvailable reports whether gcc can link a program that calls the C
+// library natively (32-bit needs gcc-multilib).
+func libcAvailable(bits int) (bool, string) {
+	args := []string{"-x", "c", "-", "-o", os.DevNull}
+	if bits == 32 {
+		args = append([]string{"-m32"}, args...)
+	}
+	cmd := exec.Command("gcc", args...)
+	cmd.Stdin = strings.NewReader("int main(void) { return 0; }\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if bits == 32 {
+			return false, "gcc -m32 cannot link (install gcc-multilib): " + strings.TrimSpace(string(out))
+		}
+		return false, "gcc cannot link C programs: " + strings.TrimSpace(string(out))
 	}
 	return true, ""
 }
