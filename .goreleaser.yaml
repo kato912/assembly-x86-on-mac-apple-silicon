@@ -71,6 +71,8 @@ homebrew_casks:
     commit_msg_template: "nasmx86 {{ .Tag }}"
     dependencies:
       - formula: nasm
+      # The course's assembler: yasm -f elf64 -g dwarf2 -o hello.o hello.s
+      - formula: yasm
     # On macOS, also bring the DDD debugger (--ddd), the x86 gdb under it
     # and XQuartz, the X11 window system DDD draws with. Only on macOS:
     # there is no XQuartz on Linux. `brew uninstall nasmx86` removes the
@@ -88,12 +90,30 @@ homebrew_casks:
       post:
         # The binary is ad-hoc signed but not notarized: clear the
         # quarantine flag so Gatekeeper does not block it.
+        # Then nasmx86 setup adds a few lines to ~/.zshrc so that in new
+        # terminals ld, gcc, ddd and gdb are nasmx86's (they hand the Mac's
+        # own files to the Mac's ld and gcc): course commands such as
+        # ld -o hello hello.o, ./hello and ddd ./hello & work as typed.
         install_steps: |
           on_macos do
             run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/nasmx86"]
+            run "{{ .StagedPath }}/nasmx86", args: ["setup"], must_succeed: false, print_stdout: true,
+                writable_paths: [".zshrc", ".bash_profile"], writable_base: :home
+          end
+      pre:
+        # brew uninstall takes those lines out again.
+        uninstall_steps: |
+          on_macos do
+            run "{{ .StagedPath }}/nasmx86", args: ["setup", "--remove"], must_succeed: false, print_stdout: true,
+                writable_paths: [".zshrc", ".bash_profile"], writable_base: :home
           end
     caveats: |
       Example programs: https://github.com/kato912/assembly-x86-on-mac-apple-silicon/tree/main/examples
       Try:  nasmx86 hello.asm   (nasmx86 --help for options, --th for Thai)
       Debug in DDD (macOS):  nasmx86 --ddd hello.asm
+      Linux commands (macOS, in a new terminal window):
+        yasm -f elf64 -g dwarf2 -o hello.o hello.s
+        ld -o hello hello.o      (or gcc -o hello hello.o for main and printf)
+        ./hello
+        ddd ./hello &
       Remove it all (macOS):  brew uninstall nasmx86 xquartz
