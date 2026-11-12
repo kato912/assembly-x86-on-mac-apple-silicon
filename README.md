@@ -32,29 +32,30 @@ line 14: div ecx  →  division overflow: edx:eax = 0x00000009:0x00000064 divide
 brew install kato912/tap/nasmx86
 ```
 
-For writing and running programs, that one command is all you need. It also
-installs `nasm`, and the rest is built in: the C library (`printf`,
-`scanf`, ...), YASM's command line, and the `--step` / `--trace` debuggers.
-No Homebrew account or GitHub login is needed, and it works even if Xcode is
-outdated or not installed. Update later with `brew upgrade nasmx86`.
+That one command installs everything the course needs:
 
-Only if you want the **DDD** graphical debugger, install once more:
+- `nasmx86` and `nasm`, to write and run programs. The C library (`printf`,
+  `scanf`, ...), YASM's command line and the `--step` / `--trace` debuggers
+  are built in.
+- The **DDD** debugger and `x86_64-elf-gdb`, for `nasmx86 --ddd` and
+  `nasmx86 --gdb`.
+- **XQuartz**, the X11 window system DDD draws with. Its installer asks for
+  your Mac password once. You don't need to log out afterwards:
+  `nasmx86 --ddd` starts XQuartz by itself.
+
+No Homebrew account or GitHub login is needed, and it works even if Xcode is
+outdated or not installed. Update later with `brew upgrade nasmx86` (if you
+installed nasmx86 before v0.7.0, this also adds DDD, gdb and XQuartz).
+
+To remove it all again:
 
 ```bash
-brew install ddd x86_64-elf-gdb
-brew install --cask xquartz
+brew uninstall nasmx86 xquartz
 ```
 
-XQuartz is the X11 window system DDD draws with. Its installer asks for your
-Mac password. You don't need to log out afterwards: `nasmx86 --ddd` starts
-XQuartz by itself. For gdb on its own (`--gdb`), `brew install x86_64-elf-gdb`
-is enough.
-
-| You want to... | Install |
-|---|---|
-| assemble and run programs, call `printf`/`scanf`, use `--step`/`--trace` | `brew install kato912/tap/nasmx86` |
-| debug in DDD (`--ddd`) | the above, plus `brew install ddd x86_64-elf-gdb` and `brew install --cask xquartz` |
-| debug in gdb (`--gdb`) | the above, plus `brew install x86_64-elf-gdb` |
+Homebrew removes `nasm`, DDD and gdb together with nasmx86, unless you
+installed one of them yourself or another program still needs it. XQuartz
+has to be named, because Homebrew never removes an app (a cask) by itself.
 
 ### Linux (or macOS without Homebrew)
 
@@ -327,7 +328,9 @@ the Linux machine: it runs the program, and gdb controls it over gdb's
 remote protocol, as it does with `gdbserver`. Your program's own input and
 output stay in the terminal where you typed the command.
 
-One-time setup on a Mac (Homebrew), besides nasmx86 itself:
+On a Mac, `brew install kato912/tap/nasmx86` already installs DDD, gdb and
+XQuartz. If you got nasmx86 another way (install.sh, from source), install
+them once with Homebrew:
 
 ```bash
 brew install ddd x86_64-elf-gdb

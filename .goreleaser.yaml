@@ -71,6 +71,19 @@ homebrew_casks:
     commit_msg_template: "nasmx86 {{ .Tag }}"
     dependencies:
       - formula: nasm
+    # On macOS, also bring the DDD debugger (--ddd), the x86 gdb under it
+    # and XQuartz, the X11 window system DDD draws with. Only on macOS:
+    # there is no XQuartz on Linux. `brew uninstall nasmx86` removes the
+    # formulae again when nothing else needs them; XQuartz is a cask, which
+    # Homebrew never removes by itself (brew uninstall nasmx86 xquartz).
+    custom_block: |
+      on_macos do
+        depends_on formula: [
+          "ddd",
+          "x86_64-elf-gdb",
+        ]
+        depends_on cask: "xquartz"
+      end
     hooks:
       post:
         # The binary is ad-hoc signed but not notarized: clear the
@@ -82,3 +95,5 @@ homebrew_casks:
     caveats: |
       Example programs: https://github.com/kato912/assembly-x86-on-mac-apple-silicon/tree/main/examples
       Try:  nasmx86 hello.asm   (nasmx86 --help for options, --th for Thai)
+      Debug in DDD (macOS):  nasmx86 --ddd hello.asm
+      Remove it all (macOS):  brew uninstall nasmx86 xquartz

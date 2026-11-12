@@ -32,27 +32,25 @@ $ nasmx86 --th avg.asm
 brew install kato912/tap/nasmx86
 ```
 
-ถ้าจะเขียนและรันโปรแกรม ใช้คำสั่งนี้คำสั่งเดียวพอ คำสั่งนี้ติดตั้ง `nasm` ให้ด้วย ส่วนที่เหลือมีอยู่ใน nasmx86 แล้ว
-ได้แก่ ไลบรารี C (`printf`, `scanf` ...), รูปแบบคำสั่งของ YASM และดีบักเกอร์ `--step` / `--trace`
-ไม่ต้องมีบัญชี Homebrew หรือล็อกอิน GitHub และใช้ได้แม้ Xcode จะเก่าหรือไม่ได้ติดตั้ง
-อัปเดตภายหลังด้วย `brew upgrade nasmx86`
+คำสั่งเดียวนี้ติดตั้งทุกอย่างที่วิชาต้องใช้:
 
-ถ้าต้องการใช้ดีบักเกอร์แบบกราฟิก **DDD** ด้วย ให้ติดตั้งเพิ่มครั้งเดียว:
+- `nasmx86` และ `nasm` สำหรับเขียนและรันโปรแกรม ไลบรารี C (`printf`, `scanf` ...),
+  รูปแบบคำสั่งของ YASM และดีบักเกอร์ `--step` / `--trace` มีอยู่ใน nasmx86 แล้ว
+- ดีบักเกอร์ **DDD** และ `x86_64-elf-gdb` สำหรับ `nasmx86 --ddd` และ `nasmx86 --gdb`
+- **XQuartz** ระบบหน้าต่าง X11 ที่ DDD ใช้วาดหน้าจอ ตัวติดตั้งจะถามรหัสผ่านเครื่อง Mac หนึ่งครั้ง
+  ติดตั้งเสร็จแล้วไม่ต้องออกจากระบบ เพราะ `nasmx86 --ddd` เปิด XQuartz ให้เอง
+
+ไม่ต้องมีบัญชี Homebrew หรือล็อกอิน GitHub และใช้ได้แม้ Xcode จะเก่าหรือไม่ได้ติดตั้ง
+อัปเดตภายหลังด้วย `brew upgrade nasmx86` (ถ้าเคยติดตั้งเวอร์ชันก่อน v0.7.0 คำสั่งนี้จะลง DDD, gdb และ XQuartz ให้ด้วย)
+
+ถ้าจะลบทั้งหมดออก:
 
 ```bash
-brew install ddd x86_64-elf-gdb
-brew install --cask xquartz
+brew uninstall nasmx86 xquartz
 ```
 
-XQuartz คือระบบหน้าต่าง X11 ที่ DDD ใช้วาดหน้าจอ ตัวติดตั้งจะถามรหัสผ่านเครื่อง Mac
-ติดตั้งเสร็จแล้วไม่ต้องออกจากระบบ เพราะ `nasmx86 --ddd` เปิด XQuartz ให้เอง
-ถ้าจะใช้แค่ gdb (`--gdb`) ติดตั้งแค่ `brew install x86_64-elf-gdb` ก็พอ
-
-| ต้องการ... | ติดตั้ง |
-|---|---|
-| แอสเซมเบิลและรันโปรแกรม เรียก `printf`/`scanf` ใช้ `--step`/`--trace` | `brew install kato912/tap/nasmx86` |
-| ดีบักด้วย DDD (`--ddd`) | ข้างบน และ `brew install ddd x86_64-elf-gdb` กับ `brew install --cask xquartz` |
-| ดีบักด้วย gdb (`--gdb`) | ข้างบน และ `brew install x86_64-elf-gdb` |
+Homebrew จะลบ `nasm`, DDD และ gdb ไปพร้อมกับ nasmx86 ยกเว้นตัวที่ติดตั้งเองไว้ก่อน
+หรือยังมีโปรแกรมอื่นใช้อยู่ ส่วน XQuartz ต้องพิมพ์ชื่อด้วย เพราะ Homebrew ไม่ลบแอป (cask) ให้เอง
 
 ### Linux (หรือ macOS ที่ไม่ใช้ Homebrew)
 
@@ -316,7 +314,8 @@ returned from fact: eax = 0x00000001 (1)
 รันโปรแกรม แล้วให้ gdb ควบคุมผ่านโปรโตคอล remote ของ gdb เหมือนตอนใช้ `gdbserver`
 อินพุตและเอาต์พุตของโปรแกรมยังอยู่ในเทอร์มินัลที่พิมพ์คำสั่ง
 
-ติดตั้งครั้งเดียวบน Mac (Homebrew) นอกเหนือจากตัว nasmx86:
+บน Mac คำสั่ง `brew install kato912/tap/nasmx86` ติดตั้ง DDD, gdb และ XQuartz ให้แล้ว
+ถ้าได้ nasmx86 มาทางอื่น (install.sh หรือคอมไพล์จากซอร์สโค้ด) ให้ติดตั้งครั้งเดียวด้วย Homebrew:
 
 ```bash
 brew install ddd x86_64-elf-gdb
