@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -19,9 +20,12 @@ import (
 
 // Options configure Run.
 type Options struct {
-	Addr string    // listen address, e.g. "localhost:1234"; "" picks a free port
-	DDD  bool      // start DDD (with gdb) connected to the server
-	Log  io.Writer // messages for the user (the terminal)
+	Addr string // listen address, e.g. "localhost:1234"; "" picks a free port
+	DDD  bool   // start DDD (with gdb) connected to the server
+	GDB  bool   // start gdb in this terminal, connected to the server
+	// GDBArgs are more gdb options (GDB only), such as -q or -ex 'break _start'.
+	GDBArgs []string
+	Log     io.Writer // messages for the user (the terminal)
 }
 
 // Run serves gdb for program p, whose executable (for gdb's symbols) is
@@ -39,6 +43,9 @@ func Run(p *runner.Program, exe string, o Options) int {
 			say("ddd.missing")
 			return runner.ExitNoNasm
 		}
+	}
+	if o.DDD || o.GDB {
+		var ok bool
 		if gdb, ok = FindGDB(); !ok {
 			say("gdb.missing")
 			return runner.ExitNoNasm
@@ -67,7 +74,25 @@ func Run(p *runner.Program, exe string, o Options) int {
 
 	var dddDone chan error
 	var dddOut bytes.Buffer
-	if o.DDD {
+	var gdbCmd *exec.Cmd
+	if o.GDB {
+		// gdb runs in this terminal, like gdb ./hello on Linux. Ctrl-C is
+		// gdb's: it interrupts the program through the protocol, so nasmx86
+		// itself must not die of it.
+		script := filepath.Join(filepath.Dir(exe), "nasmx86.gdb")
+		os.WriteFile(script, []byte(gdbScript(target)), 0o644)
+		args := append(append([]string{"-x", script}, o.GDBArgs...), exe)
+		gdbCmd = exec.Command(gdb, args...)
+		gdbCmd.Stdin, gdbCmd.Stdout, gdbCmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		signal.Ignore(os.Interrupt)
+		defer signal.Reset(os.Interrupt)
+		if err := gdbCmd.Start(); err != nil {
+			say("gdb.failed", err)
+			return runner.ExitBuild
+		}
+		dddDone = make(chan error, 1)
+		go func() { dddDone <- gdbCmd.Wait() }()
+	} else if o.DDD {
 		// DDD runs "gdb" = a wrapper that starts the x86 gdb with a script
 		// connecting it to nasmx86 (the name must contain "gdb" for DDD).
 		dir := filepath.Dir(exe)
@@ -116,8 +141,18 @@ func Run(p *runner.Program, exe string, o Options) int {
 		if dddDone != nil {
 			<-dddDone
 		}
+		if gdbCmd != nil {
+			return gdbCmd.ProcessState.ExitCode()
+		}
 		return code
 	case err := <-dddDone:
+		if gdbCmd != nil {
+			if gdbCmd.ProcessState != nil {
+				return gdbCmd.ProcessState.ExitCode()
+			}
+			say("gdb.failed", err)
+			return runner.ExitBuild
+		}
 		// DDD ended before gdb connected: show why (no X server, ...).
 		out := strings.TrimSpace(dddOut.String())
 		if strings.Contains(out, "display") || strings.Contains(out, "DISPLAY") {
@@ -247,4 +282,16 @@ func FindGDB() (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// DDDEnv returns the environment to start DDD with: an X display (on
+// macOS, XQuartz is started when needed) and a UTF-8 locale. It reports
+// false when there is no X11 at all.
+func DDDEnv(log io.Writer) ([]string, bool) {
+	say := func(key string, args ...any) { fmt.Fprintln(log, "nasmx86: "+i18n.T(key, args...)) }
+	env, ok := x11Env(say)
+	if !ok {
+		return nil, false
+	}
+	return utf8Locale(env), true
 }

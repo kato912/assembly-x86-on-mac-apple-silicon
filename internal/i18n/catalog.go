@@ -116,6 +116,7 @@ examples:
 	"err.noLib":             {en: "cannot find -l%s: nasmx86 links only the C library (-lc)", th: "ไม่พบ -l%s: nasmx86 ลิงก์ได้เฉพาะไลบรารี C (-lc)"},
 	"err.unsupportedOption": {en: "%[2]s is not supported by nasmx86's %[1]s", th: "%[1]s ของ nasmx86 ไม่รองรับตัวเลือก %[2]s"},
 	"err.writeOutput":       {en: "cannot write %s: %v", th: "เขียนไฟล์ %s ไม่ได้: %v"},
+	"gdb.failed":            {en: "gdb stopped: %v", th: "gdb หยุดทำงาน: %v"},
 	"err.noClang": {en: "compiling C needs the Mac's C compiler (clang). Install it once with:  xcode-select --install",
 		th: "การคอมไพล์ภาษา C ต้องใช้คอมไพเลอร์ C ของ Mac (clang) ติดตั้งครั้งเดียวด้วย:  xcode-select --install"},
 	"hint.cFloat": {en: "nasmx86 runs integer programs only: float and double (SSE and x87 instructions) are not supported",
