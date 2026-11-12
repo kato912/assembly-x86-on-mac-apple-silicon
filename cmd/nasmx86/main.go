@@ -81,6 +81,9 @@ func run(o *options) int {
 	return p.Finish(err)
 }
 
+// Debug formats that may follow -g (yasm style, e.g. "-g dwarf2").
+var debugFormats = map[string]bool{"dwarf2": true, "dwarf": true, "stabs": true, "cv8": true, "null": true}
+
 // nasm options that take their value as the next argument.
 var nasmValueOpts = map[string]bool{"-D": true, "-d": true, "-U": true, "-u": true, "-I": true,
 	"-i": true, "-P": true, "-p": true, "-X": true, "-Z": true, "-E": false}
@@ -158,8 +161,14 @@ func parseArgs(args []string) (*options, error) {
 			if _, err := value(&i, a); err != nil { // ignored: nasmx86 manages its own files
 				return nil, err
 			}
+		case a == "-g":
+			// nasm's -g has no value; yasm's takes the debug format
+			// (yasm -g dwarf2): skip it too. nasmx86 handles debugging itself.
+			if i+1 < len(args) && debugFormats[strings.ToLower(args[i+1])] {
+				i++
+			}
 		case strings.HasPrefix(a, "-o") || strings.HasPrefix(a, "-l") || strings.HasPrefix(a, "-F") ||
-			a == "-g" || strings.HasPrefix(a, "-L") || strings.HasPrefix(a, "-M"):
+			strings.HasPrefix(a, "-g") || strings.HasPrefix(a, "-L") || strings.HasPrefix(a, "-M"):
 			// ignored
 		case nasmValueOpts[a]:
 			v, err := value(&i, a)

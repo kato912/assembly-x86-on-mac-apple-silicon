@@ -21,6 +21,9 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"x.asm", "--", "--max-steps"}, "x.asm", 0, nil, []string{"--max-steps"}},
 		{[]string{"--", "-weird.asm", "p"}, "-weird.asm", 0, nil, []string{"p"}},
 		{[]string{"-64", "-w+all", "x.asm"}, "x.asm", 64, []string{"-w+all"}, nil},
+		{[]string{"-f", "elf64", "-g", "dwarf2", "-o", "hello.o", "hello.s"}, "hello.s", 64, nil, nil}, // yasm style
+		{[]string{"-f", "elf64", "-o", "hello.o", "-l", "hello.lst", "hello.s"}, "hello.s", 64, nil, nil},
+		{[]string{"-g", "-F", "dwarf", "hello.s"}, "hello.s", 0, nil, nil},
 	}
 	for _, c := range cases {
 		o, err := parseArgs(c.args)
