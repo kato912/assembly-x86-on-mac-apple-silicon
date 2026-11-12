@@ -86,6 +86,15 @@ func Names() []string {
 	return append(n, dataSymbols...)
 }
 
+// Region returns where the library's functions are and their names (for a
+// debugger's symbol table).
+func Region(bits int) (base, size uint64, funcs []string) {
+	for _, f := range functions {
+		funcs = append(funcs, f.name)
+	}
+	return Base(bits), uint64(len(functions) * slotSize), funcs
+}
+
 // Base returns the library's load address for a 32- or 64-bit program.
 func Base(bits int) uint64 {
 	if bits == 32 {

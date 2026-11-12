@@ -40,6 +40,7 @@ type Config struct {
 	Args     []string // program arguments (argv[1:])
 	MaxSteps uint64
 	ShowRegs bool // print the registers when the program ends
+	Debug    bool // keep DWARF debug info so WriteExecutable can give it to gdb
 
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -151,7 +152,16 @@ func Build(cfg Config) (*Program, int) {
 			p.errorf("err.internal", err)
 			return nil, ExitBuild
 		}
-		res, err := nasm.Assemble(nasmPath, path, bits, cfg.NasmArgs, dir, cfg.Stderr)
+		srcPath, extra := path, cfg.NasmArgs
+		if cfg.Debug {
+			// DWARF records the path nasm was given: make it absolute so gdb
+			// finds the source from any directory.
+			if abs, err := filepath.Abs(path); err == nil {
+				srcPath = abs
+			}
+			extra = append([]string{"-F", "dwarf"}, extra...)
+		}
+		res, err := nasm.Assemble(nasmPath, srcPath, bits, extra, dir, cfg.Stderr)
 		if err != nil {
 			p.Close()
 			var ee *nasm.ExitError
@@ -168,7 +178,7 @@ func Build(cfg Config) (*Program, int) {
 		objects = append(objects, res.Object)
 	}
 
-	img, err := loader.LinkWith(libc.Symbols(bits), objects...)
+	img, err := loader.LinkOpts(loader.Options{Externs: libc.Symbols(bits), Debug: cfg.Debug}, objects...)
 	if err != nil {
 		p.Close()
 		var ue *loader.UndefinedError
@@ -206,6 +216,33 @@ func (p *Program) sourceFor(objects []string, obj string) string {
 		}
 	}
 	return filepath.Base(obj)
+}
+
+// WriteExecutable writes the linked program as an ELF executable with its
+// symbols and (when built with Config.Debug) DWARF line information, for
+// gdb to read while it debugs the program running in nasmx86. The file is
+// placed in nasmx86's temporary directory and removed by Close.
+func (p *Program) WriteExecutable() (string, error) {
+	dir := p.tmpDir
+	if dir == "" {
+		var err error
+		if dir, err = os.MkdirTemp("", "nasmx86-"); err != nil {
+			return "", err
+		}
+		p.tmpDir = dir
+	}
+	name := strings.TrimSuffix(filepath.Base(p.Cfg.Source), filepath.Ext(p.Cfg.Source))
+	path := filepath.Join(dir, name)
+	var extra []loader.ExtraRegion
+	if p.Lib != nil {
+		base, size, funcs := libc.Region(p.Bits)
+		r := loader.ExtraRegion{Name: ".libc", Addr: base, Size: size}
+		for _, f := range funcs {
+			r.Symbols = append(r.Symbols, loader.ExtraSymbol{Name: f, Addr: libc.Symbols(p.Bits)[f]})
+		}
+		extra = append(extra, r)
+	}
+	return path, p.Image.WriteELF(path, extra)
 }
 
 // InstallHint explains how to install nasm on the current OS.
