@@ -13,6 +13,7 @@ import (
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/debugger"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/gdbstub"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/progfile"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
 )
 
@@ -150,6 +151,9 @@ func parseArgs(args []string) (*options, error) {
 		}
 		if !strings.HasPrefix(a, "-") || a == "-" {
 			file = a
+			// A program from ld or gcc (./hello runs nasmx86 ./hello ...):
+			// everything after it is the program's, as on Linux.
+			afterDashes = progfile.Is(a)
 			continue
 		}
 		// nasm-style options.

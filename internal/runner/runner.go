@@ -3,6 +3,7 @@
 package runner
 
 import (
+	"debug/elf"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/libc"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/loader"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/nasm"
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/progfile"
 )
 
 // DefaultMaxSteps is the default instruction limit (infinite-loop guard).
@@ -31,9 +33,24 @@ const (
 	signalOffset = 128
 )
 
+// Mode says how a program is linked.
+type Mode int
+
+const (
+	// Auto is nasmx86's own way: start at _start, else run main like a C
+	// program, and let any file call the built-in C library.
+	Auto Mode = iota
+	// LD links like GNU ld: start at _start (or Config.Entry), and use the
+	// C library only with Config.CLib (ld -lc).
+	LD
+	// GCC links like gcc: start the C runtime, which calls main, with the
+	// C library.
+	GCC
+)
+
 // Config describes one run.
 type Config struct {
-	Source   string   // the main source file (.asm, or a nasm .o object)
+	Source   string   // the main source file (.asm, a nasm .o object, or a program file from ld/gcc)
 	Extra    []string // more source/object files linked with it
 	Bits     int      // 32, 64, or 0 to auto-detect
 	NasmArgs []string // extra options passed to nasm
@@ -41,6 +58,12 @@ type Config struct {
 	MaxSteps uint64
 	ShowRegs bool // print the registers when the program ends
 	Debug    bool // keep DWARF debug info so WriteExecutable can give it to gdb
+
+	Mode  Mode   // how to link (a program file sets it)
+	Entry string // LD: the symbol to start at (ld -e); default _start
+	CLib  bool   // LD: link the built-in C library too (ld -lc)
+	Argv0 string // the program's argv[0]; default ./NAME
+	Tool  string // name to start error messages with, such as "ld"; default nasmx86
 
 	Stdin  io.Reader
 	Stdout io.Writer
@@ -58,6 +81,7 @@ type Program struct {
 	Files     []SourceFile // input files in link order; Files[0] is the main one
 	InitialSP uint64
 	ExitStub  uint64
+	CRuntime  bool // main is called by a C runtime (returning from main exits)
 
 	tmpDir string
 }
@@ -69,13 +93,51 @@ type SourceFile struct {
 	Lines  *nasm.LineMap // address -> line map from the nasm listing; nil for .o files
 }
 
-// IsObject reports whether path names an already assembled object file.
+// IsObject reports whether path names an already assembled object file:
+// a .o or .obj file, or any ELF file.
 func IsObject(path string) bool {
-	return strings.EqualFold(filepath.Ext(path), ".o") || strings.EqualFold(filepath.Ext(path), ".obj")
+	if strings.EqualFold(filepath.Ext(path), ".o") || strings.EqualFold(filepath.Ext(path), ".obj") {
+		return true
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, 4)
+	_, err = io.ReadFull(f, head)
+	return err == nil && string(head) == "\x7fELF"
+}
+
+// ObjectBits returns 32 or 64 for an x86 ELF object, or 0.
+func ObjectBits(path string) int {
+	f, err := elf.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	switch f.Machine {
+	case elf.EM_386:
+		return 32
+	case elf.EM_X86_64:
+		return 64
+	}
+	return 0
+}
+
+func (p *Program) prefix() string {
+	if p.Cfg.Tool != "" {
+		return p.Cfg.Tool + ": "
+	}
+	return i18n.T("err.prefix")
 }
 
 func (p *Program) errorf(key string, args ...any) {
-	fmt.Fprintln(p.Cfg.Stderr, i18n.T("err.prefix")+i18n.T(key, args...))
+	fmt.Fprintln(p.Cfg.Stderr, p.prefix()+i18n.T(key, args...))
+}
+
+func (p *Program) hintf(key string, args ...any) {
+	fmt.Fprintln(p.Cfg.Stderr, "    "+i18n.T("hint.prefix")+i18n.T(key, args...))
 }
 
 // Build assembles, links and loads the program. On failure it prints a
@@ -90,13 +152,40 @@ func Build(cfg Config) (*Program, int) {
 	if cfg.Stderr == nil {
 		cfg.Stderr = os.Stderr
 	}
-	p := &Program{Cfg: cfg}
+	p := &Program{}
 	paths := append([]string{cfg.Source}, cfg.Extra...)
+	names := paths // what to call each file in messages
+	if progfile.Is(cfg.Source) {
+		// A program file from nasmx86's ld or gcc: link its objects again.
+		prog, err := progfile.Open(cfg.Source)
+		if err != nil {
+			fmt.Fprintln(cfg.Stderr, i18n.T("err.prefix")+err.Error())
+			return nil, ExitBuild
+		}
+		if p.tmpDir, err = os.MkdirTemp("", "nasmx86-"); err != nil {
+			fmt.Fprintln(cfg.Stderr, i18n.T("err.prefix")+i18n.T("err.internal", err))
+			return nil, ExitBuild
+		}
+		if paths, err = prog.Extract(p.tmpDir); err != nil {
+			p.Close()
+			fmt.Fprintln(cfg.Stderr, i18n.T("err.prefix")+i18n.T("err.internal", err))
+			return nil, ExitBuild
+		}
+		names = prog.Objects
+		cfg.Mode, cfg.Bits, cfg.Entry, cfg.CLib = LD, prog.Bits, prog.Entry, prog.CLib
+		if prog.Linker == progfile.GCC {
+			cfg.Mode = GCC
+		}
+		if cfg.Argv0 == "" {
+			cfg.Argv0 = cfg.Source // as the shell ran it, e.g. ./hello
+		}
+	}
+	p.Cfg = cfg
 
 	// Read the sources and work out 32/64-bit mode from them.
 	srcs := make([][]byte, len(paths))
 	for i, path := range paths {
-		p.Files = append(p.Files, SourceFile{Path: path})
+		p.Files = append(p.Files, SourceFile{Path: names[i]})
 		if IsObject(path) {
 			continue
 		}
@@ -109,8 +198,12 @@ func Build(cfg Config) (*Program, int) {
 		p.Files[i].Source = strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
 	}
 	bits := cfg.Bits
+	if bits == 0 && cfg.Mode != Auto {
+		bits = 64 // ld and gcc make 64-bit programs unless told -m elf_i386 / -m32
+	}
 	if bits == 0 {
 		bits = 64
+		found := false
 		for i, path := range paths {
 			if srcs[i] == nil {
 				continue
@@ -121,8 +214,29 @@ func Build(cfg Config) (*Program, int) {
 				return nil, ExitBuild
 			}
 			if why != "default" {
-				bits = b
+				bits, found = b, true
 				break
+			}
+		}
+		if !found {
+			for i, path := range paths {
+				if srcs[i] == nil {
+					if b := ObjectBits(path); b != 0 {
+						bits = b
+						break
+					}
+				}
+			}
+		}
+	}
+	if cfg.Mode != Auto {
+		// Like ld, refuse objects of the other size, and say how to fix it.
+		for i, path := range paths {
+			if b := ObjectBits(path); b != 0 && b != bits {
+				p.errorf("err.objBits", names[i], b, bits)
+				p.hintf(fmt.Sprintf("hint.objBits%d.%s", b, cfg.Tool))
+				p.Close()
+				return nil, ExitBuild
 			}
 		}
 	}
@@ -186,16 +300,36 @@ func Build(cfg Config) (*Program, int) {
 		objects = append(objects, res.Object)
 	}
 
-	img, err := loader.LinkOpts(loader.Options{Externs: libc.Symbols(bits), Debug: cfg.Debug}, objects...)
+	opts := loader.Options{Externs: libc.Symbols(bits), Debug: cfg.Debug}
+	switch cfg.Mode {
+	case LD:
+		opts.Entry = cfg.Entry
+		if opts.Entry == "" {
+			opts.Entry = "_start"
+		}
+		if !cfg.CLib {
+			opts.Externs = nil // ld links the C library only when asked (-lc)
+		}
+	case GCC:
+		opts.Entry = "main"
+	}
+	img, err := loader.LinkOpts(opts, objects...)
 	if err != nil {
 		p.Close()
 		var ue *loader.UndefinedError
 		var de *loader.DuplicateError
 		switch {
 		case errors.As(err, &ue):
-			p.errorf("err.undefined", strings.Join(ue.Names, ", "))
+			if cfg.Mode == LD && !cfg.CLib {
+				p.errorf("err.undefinedLD", strings.Join(ue.Names, ", "))
+			} else {
+				p.errorf("err.undefined", strings.Join(ue.Names, ", "))
+			}
 			hint := i18n.T("hint.undefined", libc.Summary())
-			if len(paths) > 1 {
+			switch {
+			case cfg.Mode == LD && !cfg.CLib && libc.Symbols(bits)[ue.Names[0]] != 0:
+				hint = i18n.T("hint.undefinedUseGCC", ue.Names[0], outName(cfg), strings.Join(names, " "))
+			case len(paths) > 1:
 				hint = i18n.T("hint.undefinedMulti", ue.Names[0])
 			}
 			fmt.Fprintln(cfg.Stderr, "    "+i18n.T("hint.prefix")+hint)
@@ -210,10 +344,37 @@ func Build(cfg Config) (*Program, int) {
 		}
 		return nil, ExitBuild
 	}
+	switch {
+	case cfg.Mode == GCC && img.EntryMissing:
+		p.Close()
+		p.errorf("err.noMain")
+		if _, ok := img.Lookup("_start"); ok {
+			p.hintf("hint.startUseLD", outName(cfg), strings.Join(names, " "))
+		}
+		return nil, ExitBuild
+	case cfg.Mode == GCC:
+		if s, ok := img.Lookup("_start"); ok && s.Global {
+			p.Close()
+			p.errorf("err.startWithGCC")
+			p.hintf("hint.startUseLD", outName(cfg), strings.Join(names, " "))
+			return nil, ExitBuild
+		}
+	case img.EntryMissing:
+		// GNU ld only warns, and the program starts at the top of .text.
+		fmt.Fprintln(cfg.Stderr, p.prefix()+i18n.T("warn.noEntry", opts.Entry, img.Entry))
+	}
 	p.Image = img
 	p.Bits = img.Bits
 	p.load()
 	return p, 0
+}
+
+// outName is the program name for hints: what -o will be called.
+func outName(cfg Config) string {
+	if cfg.Argv0 != "" {
+		return filepath.Base(cfg.Argv0)
+	}
+	return strings.TrimSuffix(filepath.Base(cfg.Source), filepath.Ext(cfg.Source))
 }
 
 // sourceFor maps an object path back to the file the user named.
@@ -334,11 +495,15 @@ func (p *Program) load() {
 		}
 	}
 
-	argv0 := "./" + strings.TrimSuffix(filepath.Base(p.Cfg.Source), filepath.Ext(p.Cfg.Source)) // like ./hello
+	argv0 := p.Cfg.Argv0
+	if argv0 == "" {
+		argv0 = "./" + strings.TrimSuffix(filepath.Base(p.Cfg.Source), filepath.Ext(p.Cfg.Source)) // like ./hello
+	}
 	argv := append([]string{argv0}, p.Cfg.Args...)
 	sp, argvPtr, envpPtr := emu.SetupStack(c, argv, os.Environ(), p.Image.Entry)
 	c.RIP = p.Image.Entry
-	if p.Image.EntryName == "main" {
+	p.CRuntime = p.Cfg.Mode == GCC || (p.Cfg.Mode == Auto && p.Image.EntryName == "main")
+	if p.CRuntime {
 		// Behave like a C runtime: main(argc, argv, envp), and returning
 		// from main exits with the value in eax.
 		p.ExitStub = emu.InstallExitStub(c)

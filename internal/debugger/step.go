@@ -482,7 +482,7 @@ func (d *stepper) stackCmd(args []string) {
 		}
 		note := ""
 		switch {
-		case a == d.p.InitialSP && d.p.Image.EntryName != "main":
+		case a == d.p.InitialSP && !d.p.CRuntime:
 			note = "argc"
 		case d.c.InCode(v):
 			if loc, ok := d.p.LocAt(v); ok {

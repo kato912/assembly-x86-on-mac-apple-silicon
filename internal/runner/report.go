@@ -210,7 +210,7 @@ func (p *Program) Describe(f *emu.Fault) string {
 		what = i18n.T("err.runoff")
 		hints = append(hints, i18n.T("hint.exit"+fmt.Sprint(p.Bits)))
 	case emu.FaultBadReturn:
-		if p.Image.EntryName != "main" && p.CPU.SP() == p.InitialSP+uint64(w) {
+		if !p.CRuntime && p.CPU.SP() == p.InitialSP+uint64(w) {
 			what = i18n.T("err.retStart")
 			hints = append(hints, i18n.T("hint.exit"+fmt.Sprint(p.Bits)))
 		} else {
