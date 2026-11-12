@@ -43,8 +43,10 @@ That one command installs everything the course needs:
   your Mac password once. You don't need to log out afterwards:
   `nasmx86 --ddd` starts XQuartz by itself.
 
-No Homebrew account or GitHub login is needed, and it works even if Xcode is
-outdated or not installed. Update later with `brew upgrade nasmx86` (if you
+Homebrew first lists what it will install and asks "Do you want to proceed
+with the installation?": press Enter. Then type your Mac password when
+asked (for XQuartz). No Homebrew account or GitHub login is needed, and it
+works even if Xcode is outdated or not installed. Update later with `brew upgrade nasmx86` (if you
 installed nasmx86 before v0.7.0, this also adds DDD, gdb and XQuartz).
 
 To remove it all again:

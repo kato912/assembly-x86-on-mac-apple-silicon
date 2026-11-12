@@ -40,6 +40,8 @@ brew install kato912/tap/nasmx86
 - **XQuartz** ระบบหน้าต่าง X11 ที่ DDD ใช้วาดหน้าจอ ตัวติดตั้งจะถามรหัสผ่านเครื่อง Mac หนึ่งครั้ง
   ติดตั้งเสร็จแล้วไม่ต้องออกจากระบบ เพราะ `nasmx86 --ddd` เปิด XQuartz ให้เอง
 
+Homebrew จะแสดงรายการที่จะติดตั้งแล้วถาม "Do you want to proceed with the installation?" ให้กด Enter
+จากนั้นพิมพ์รหัสผ่านเครื่อง Mac เมื่อถูกถาม (สำหรับ XQuartz)
 ไม่ต้องมีบัญชี Homebrew หรือล็อกอิน GitHub และใช้ได้แม้ Xcode จะเก่าหรือไม่ได้ติดตั้ง
 อัปเดตภายหลังด้วย `brew upgrade nasmx86` (ถ้าเคยติดตั้งเวอร์ชันก่อน v0.7.0 คำสั่งนี้จะลง DDD, gdb และ XQuartz ให้ด้วย)
 
