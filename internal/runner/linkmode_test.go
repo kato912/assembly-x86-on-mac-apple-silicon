@@ -2,12 +2,14 @@ package runner
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/nasm"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/progfile"
 )
@@ -182,4 +184,70 @@ _start:
 	if code != 139 || !strings.Contains(errb.String(), "crash.asm line 5: mov rax, [rbx]") {
 		t.Errorf("crash: code=%d\n%s", code, errb.String())
 	}
+}
+
+// interruptingReader gives its chunks one Read at a time; a nil chunk is
+// a debugger's Ctrl-C (emu.ErrInterrupted).
+type interruptingReader struct{ chunks [][]byte }
+
+func (r *interruptingReader) Read(b []byte) (int, error) {
+	if len(r.chunks) == 0 {
+		return 0, io.EOF
+	}
+	c := r.chunks[0]
+	r.chunks = r.chunks[1:]
+	if c == nil {
+		return 0, emu.ErrInterrupted
+	}
+	return copy(b, c), nil
+}
+
+// An interrupted read stops the program before the read, and the C library
+// keeps the input it had taken: scanf("%d %d") still gets both numbers.
+func TestInterruptedInput(t *testing.T) {
+	const src = `
+extern scanf, printf
+section .data
+fmtin  db "%d %d", 0
+fmtout db "sum = %d", 10, 0
+section .bss
+a resd 1
+b resd 1
+section .text
+global main
+main:
+    push rbp
+    mov rdi, fmtin
+    mov rsi, a
+    mov rdx, b
+    xor eax, eax
+    call scanf
+    mov esi, [a]
+    add esi, [b]
+    mov rdi, fmtout
+    xor eax, eax
+    call printf
+    pop rbp
+    xor eax, eax
+    ret
+`
+	dir := t.TempDir()
+	obj := object(t, dir, "sum.o", 64, src)
+	var out bytes.Buffer
+	in := &interruptingReader{chunks: [][]byte{[]byte("3\n"), nil, []byte("4\n")}}
+	p, code := Build(Config{Source: obj, Mode: GCC, MaxSteps: DefaultMaxSteps, Stdin: in, Stdout: &out, Stderr: &out})
+	if p == nil {
+		t.Fatalf("build: %d %s", code, out.String())
+	}
+	err := p.CPU.Run()
+	if !errors.Is(err, emu.ErrInterrupted) {
+		t.Fatalf("first run: %v", err)
+	}
+	if in, derr := p.CPU.Decode(p.CPU.RIP); derr != nil || !strings.HasPrefix(p.Disasm(in, p.CPU.RIP), "call scanf") {
+		t.Errorf("stopped at %#x", p.CPU.RIP)
+	}
+	if code := p.Finish(p.CPU.Run()); code != 0 || out.String() != "sum = 7\n" {
+		t.Errorf("after continuing: code %d, output %q", code, out.String())
+	}
+	p.Close()
 }

@@ -1,6 +1,8 @@
 package libc
 
 import (
+	"errors"
+
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
 )
 
@@ -212,8 +214,15 @@ func (lib *Lib) fill(s *stream) bool {
 	}
 	buf := make([]byte, bufSize)
 	n, err := lib.os.ReadFD(s.fd, buf)
+	if errors.Is(err, emu.ErrInterrupted) {
+		panic(libFault{err}) // dispatch puts back what this call consumed
+	}
 	if n > 0 {
 		s.in = append(s.in, buf[:n]...)
+		if lib.readInCall == nil {
+			lib.readInCall = map[*stream][]byte{}
+		}
+		lib.readInCall[s] = append(lib.readInCall[s], buf[:n]...)
 		return true
 	}
 	if err != nil || n == 0 {
@@ -307,4 +316,36 @@ func (lib *Lib) closeFile(s *stream) int {
 		return -1
 	}
 	return 0
+}
+
+// inputState is a readable stream's buffered input at the start of a call.
+type inputState struct {
+	s   *stream
+	in  []byte
+	eof bool
+}
+
+// saveInput records the buffered input of the readable streams, so that an
+// interrupted call can be undone (restoreInput). Consuming input only
+// reslices s.in, so keeping the slice keeps the bytes; what the call reads
+// is collected in lib.readInCall.
+func (lib *Lib) saveInput() []inputState {
+	lib.readInCall = nil
+	var saved []inputState
+	for _, s := range lib.streams {
+		if s.canRead {
+			saved = append(saved, inputState{s, s.in, s.eof})
+		}
+	}
+	return saved
+}
+
+// restoreInput gives the streams back the input they had when the call
+// started, followed by what the call read.
+func (lib *Lib) restoreInput(saved []inputState) {
+	for _, st := range saved {
+		in := append([]byte(nil), st.in...)
+		st.s.in, st.s.eof = append(in, lib.readInCall[st.s]...), st.eof
+	}
+	lib.readInCall = nil
 }

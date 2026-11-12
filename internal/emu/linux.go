@@ -1,6 +1,7 @@
 package emu
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -41,8 +42,9 @@ type Linux struct {
 	// (the C library flushes or reports its buffered output there).
 	BeforeExit func(c *CPU)
 
-	files  map[int]*fdEntry
-	warned map[uint64]bool
+	files       map[int]*fdEntry
+	warned      map[uint64]bool
+	interrupted bool // the last read was interrupted (ErrInterrupted)
 
 	brkStart, brkCur uint64
 	heap             *Region
@@ -53,6 +55,12 @@ type fdEntry struct {
 	w io.Writer
 	f *os.File // nil for stdio wrappers
 }
+
+// ErrInterrupted is returned by a stdio reader when a debugger interrupts
+// the program while it waits for input (gdb's Ctrl-C). The read does not
+// happen: the program stops at the instruction (or C library call) that
+// asked for input, and reads again when it continues.
+var ErrInterrupted = errors.New("interrupted while reading input")
 
 // NewLinux returns a kernel wired to the given stdio streams.
 func NewLinux(stdin io.Reader, stdout, stderr io.Writer) *Linux {
@@ -148,6 +156,10 @@ func (l *Linux) dispatch(c *CPU, name string, int80 bool, a [6]uint64) (ret int6
 		ret, desc = l.sysWrite(c, a[0], a[1], a[2])
 	case "read":
 		ret, desc = l.sysRead(c, a[0], a[1], a[2])
+		if l.interrupted {
+			l.interrupted = false
+			return 0, desc, true, ErrInterrupted
+		}
 	case "open":
 		ret, desc = l.sysOpen(c, a[0], a[1], a[2])
 	case "openat":

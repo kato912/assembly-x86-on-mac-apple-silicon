@@ -111,6 +111,10 @@ func (l *Linux) sysRead(c *CPU, fd, buf, count uint64) (int64, string) {
 	}
 	data := make([]byte, n)
 	got, err := e.r.Read(data)
+	if errors.Is(err, ErrInterrupted) {
+		l.interrupted = true
+		return 0, desc
+	}
 	if got == 0 && err != nil && !errors.Is(err, io.EOF) {
 		return -errno(err), desc
 	}
@@ -317,6 +321,9 @@ func (l *Linux) IsTerminal(fd int) bool {
 	}
 	if fd == 0 {
 		w = e.r
+	}
+	if t, ok := w.(interface{ IsTerminal() bool }); ok {
+		return t.IsTerminal() // a debugger's console standing in for a terminal
 	}
 	f, ok := w.(*os.File)
 	if !ok {

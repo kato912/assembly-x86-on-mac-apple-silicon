@@ -129,11 +129,14 @@ type Lib struct {
 	// output like returning from main in C does.
 	ExitStub uint64
 
-	streams  map[uint64]*stream
-	nextFile int
-	heap     heap
-	seed     *randState
-	warned   map[string]bool
+	streams map[uint64]*stream
+	// readInCall is the input each stream read during the current call
+	// (see saveInput).
+	readInCall map[*stream][]byte
+	nextFile   int
+	heap       heap
+	seed       *randState
+	warned     map[string]bool
 }
 
 // Install maps the library into the program and hooks it to the CPU.
@@ -224,6 +227,7 @@ func (lib *Lib) dispatch(c *emu.CPU, pc uint64) (err error) {
 	fn := &functions[i]
 	k := &call{lib: lib, c: c, fn: fn}
 	c.NativeRan = fn.name
+	saved := lib.saveInput()
 	defer func() {
 		if r := recover(); r != nil {
 			lf, ok := r.(libFault)
@@ -231,6 +235,13 @@ func (lib *Lib) dispatch(c *emu.CPU, pc uint64) (err error) {
 				panic(r)
 			}
 			err = lf.err
+			if errors.Is(err, emu.ErrInterrupted) {
+				// A debugger interrupted the wait for input: the call is
+				// made again when the program continues, so give back the
+				// input it had taken (scanf("%d %d") after the first number).
+				lib.restoreInput(saved)
+				return
+			}
 			_, exited := err.(*emu.Exit)
 			lib.trace(k, "", !exited)
 		}
