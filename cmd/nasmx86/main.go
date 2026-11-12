@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/debugger"
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/gdbstub"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
 )
@@ -24,6 +25,8 @@ type options struct {
 	version bool
 	trace   bool
 	step    bool
+	gdb     string // --gdb[=PORT]: listen for gdb on this address
+	ddd     bool   // --ddd: debug in DDD (through gdb)
 }
 
 // usageError is a command-line mistake; it is printed with the usage hint.
@@ -66,6 +69,17 @@ func run(o *options) int {
 	defer p.Close()
 	var err error
 	switch {
+	case o.ddd || o.gdb != "":
+		exe, werr := p.WriteExecutable()
+		if werr != nil {
+			fmt.Fprintln(os.Stderr, i18n.T("err.prefix")+i18n.T("err.internal", werr))
+			return runner.ExitBuild
+		}
+		addr := o.gdb
+		if o.ddd {
+			addr = ""
+		}
+		return gdbstub.Run(p, exe, gdbstub.Options{Addr: addr, DDD: o.ddd, Log: os.Stderr})
 	case o.step:
 		in := io.Reader(os.Stdin)
 		if tty, terr := debugger.OpenTerminal(); terr == nil {
@@ -217,6 +231,18 @@ func (o *options) ownOption(args []string, i *int, value func(*int, string) (str
 		o.trace = true
 	case "--step", "--debug":
 		o.step = true
+	case "--gdb", "--gdbserver":
+		o.gdb = "localhost:1234"
+		if hasVal {
+			o.gdb = val
+			if !strings.Contains(val, ":") {
+				o.gdb = "localhost:" + val
+			}
+		}
+		o.cfg.Debug = true
+	case "--ddd":
+		o.ddd = true
+		o.cfg.Debug = true
 	case "--regs":
 		o.cfg.ShowRegs = true
 	case "--th", "--thai":

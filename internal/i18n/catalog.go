@@ -12,6 +12,8 @@ options:
   --trace            print every executed instruction with its source line
                      and the registers/flags it changed (to stderr)
   --step             interactive debugger (type h at the prompt for help)
+  --ddd              debug in DDD, the graphical debugger (uses gdb)
+  --gdb[=PORT]       let gdb connect (target extended-remote localhost:1234)
   -32, -64           force 32-bit or 64-bit mode (default: auto-detect)
   -f elf32|elf64     same as -32/-64 (nasm style; -o and -g are ignored,
                      other nasm options such as -D or -I are passed to nasm)
@@ -24,6 +26,7 @@ options:
 examples:
   nasmx86 hello.asm
   nasmx86 --trace loop.asm
+  nasmx86 --ddd loop.asm
   nasmx86 -f elf32 hello.asm
   nasmx86 main.asm io.asm
   echo 5 | nasmx86 fact.asm
@@ -37,6 +40,8 @@ examples:
   --trace            แสดงทุกคำสั่งที่รัน พร้อมบรรทัดในซอร์สโค้ด
                      และรีจิสเตอร์/แฟล็กที่เปลี่ยน (ออกทาง stderr)
   --step             ดีบักเกอร์แบบโต้ตอบ (พิมพ์ h ที่พรอมต์เพื่อดูคำสั่ง)
+  --ddd              ดีบักด้วย DDD ดีบักเกอร์แบบกราฟิก (ทำงานผ่าน gdb)
+  --gdb[=PORT]       ให้ gdb เชื่อมต่อเข้ามา (target extended-remote localhost:1234)
   -32, -64           บังคับโหมด 32 หรือ 64 บิต (ปกติจะตรวจจับให้อัตโนมัติ)
   -f elf32|elf64     เหมือน -32/-64 (แบบ nasm; -o และ -g จะถูกข้าม
                      ตัวเลือกอื่นของ nasm เช่น -D หรือ -I ส่งต่อให้ nasm)
@@ -49,6 +54,7 @@ examples:
 ตัวอย่าง:
   nasmx86 hello.asm
   nasmx86 --trace loop.asm
+  nasmx86 --ddd loop.asm
   nasmx86 -f elf32 hello.asm
   nasmx86 main.asm io.asm
   echo 5 | nasmx86 fact.asm
@@ -88,6 +94,21 @@ examples:
 		th: "คำเตือน: ตอนโปรแกรมพังยังมีข้อความจาก printf/puts ค้างอยู่ในบัฟเฟอร์ของไลบรารี C %d ไบต์ จึงไม่ได้แสดงออกมา: %s (บน Linux จริงก็หายเหมือนกัน)"},
 	"warn.libcLost": {en: "warning: the program ended with %d bytes of printf/puts output still in the C library's buffer, so they were never printed: %s\n    hint: buffered output is written by exit — end with call exit (or return from main) instead of the exit system call, or call fflush first. On real Linux this output is lost too",
 		th: "คำเตือน: โปรแกรมจบไปโดยยังมีข้อความจาก printf/puts ค้างอยู่ในบัฟเฟอร์ของไลบรารี C %d ไบต์ จึงไม่ได้แสดงออกมา: %s\n    คำแนะนำ: ข้อความในบัฟเฟอร์จะถูกเขียนออกตอน exit — ให้จบด้วย call exit (หรือ return ออกจาก main) แทน system call exit หรือเรียก fflush ก่อน บน Linux จริงข้อความนี้ก็หายเหมือนกัน"},
+
+	"gdb.waiting": {en: "waiting for gdb on %s. In another terminal run:\n    %s %s -ex 'target extended-remote %s'\n(the program's input and output stay in this terminal; Ctrl-C here quits)",
+		th: "กำลังรอ gdb ที่ %s ให้เปิดอีกเทอร์มินัลแล้วรัน:\n    %s %s -ex 'target extended-remote %s'\n(อินพุตและเอาต์พุตของโปรแกรมอยู่ในเทอร์มินัลนี้ กด Ctrl-C ที่นี่เพื่อออก)"},
+	"gdb.listen": {en: "cannot listen on %s: %v", th: "เปิดพอร์ต %s ไม่ได้: %v"},
+	"gdb.missing": {en: "no gdb that can debug x86 was found. Install one with Homebrew:\n    brew install x86_64-elf-gdb",
+		th: "ไม่พบ gdb ที่ดีบักโค้ด x86 ได้ ติดตั้งด้วย Homebrew:\n    brew install x86_64-elf-gdb"},
+	"ddd.missing": {en: "DDD is not installed. Install it (and a gdb for x86, and the X11 window system DDD needs) with Homebrew:\n    brew install ddd x86_64-elf-gdb\n    brew install --cask xquartz      (then log out and log in once)",
+		th: "ยังไม่ได้ติดตั้ง DDD ติดตั้ง (พร้อม gdb สำหรับ x86 และระบบหน้าต่าง X11 ที่ DDD ต้องใช้) ด้วย Homebrew:\n    brew install ddd x86_64-elf-gdb\n    brew install --cask xquartz      (แล้วออกจากระบบและเข้าใหม่หนึ่งครั้ง)"},
+	"ddd.started": {en: "starting DDD; its gdb connects to nasmx86 at %s. The program's input and output are in this terminal.",
+		th: "กำลังเปิด DDD โดย gdb ของ DDD เชื่อมต่อกับ nasmx86 ที่ %s อินพุตและเอาต์พุตของโปรแกรมอยู่ในเทอร์มินัลนี้"},
+	"ddd.noXQuartz": {en: "DDD needs XQuartz (the X11 window system for macOS) to open its window. Install it once with:\n    brew install --cask xquartz\nthen run this command again (nasmx86 starts XQuartz by itself).",
+		th: "DDD ต้องใช้ XQuartz (ระบบหน้าต่าง X11 สำหรับ macOS) เพื่อเปิดหน้าต่าง ติดตั้งครั้งเดียวด้วย:\n    brew install --cask xquartz\nแล้วรันคำสั่งนี้อีกครั้ง (nasmx86 จะเปิด XQuartz ให้เอง)"},
+	"ddd.noDisplay": {en: "DDD could not open its window. Start XQuartz (open -a XQuartz) and try again; if it still fails, log out and log in once.",
+		th: "DDD เปิดหน้าต่างไม่ได้ ให้เปิด XQuartz (open -a XQuartz) แล้วลองอีกครั้ง ถ้ายังไม่ได้ให้ออกจากระบบแล้วเข้าใหม่หนึ่งครั้ง"},
+	"ddd.failed": {en: "DDD stopped: %v\n%s", th: "DDD หยุดทำงาน: %v\n%s"},
 
 	// source locations
 	"loc.line":  {en: "line %d: %s", th: "บรรทัด %d: %s"},
