@@ -85,10 +85,12 @@ func (s *Session) Step() StepResult {
 	// A faulting instruction did not complete; the fault is reported instead.
 	res := StepResult{PC: pc, Err: err, Ran: err == nil || exited}
 	if err == nil {
-		switch op {
-		case x86asm.CALL:
+		switch {
+		case s.C.NativeRan != "" && op == x86asm.CALL:
+			// call printf: the C function already ran and returned.
+		case op == x86asm.CALL:
 			s.frames = append(s.frames, Frame{Call: pc, Return: pc + uint64(length), Target: s.C.RIP, SP: s.C.SP()})
-		case x86asm.RET:
+		case op == x86asm.RET || s.C.NativeRan != "": // ret, or a jmp to a C function that returned
 			for len(s.frames) > 0 && s.frames[len(s.frames)-1].SP < s.C.SP() {
 				s.frames = s.frames[:len(s.frames)-1]
 			}

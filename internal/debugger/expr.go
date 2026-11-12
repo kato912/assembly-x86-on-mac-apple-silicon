@@ -9,6 +9,7 @@ import (
 
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/libc"
 )
 
 // Debugger expressions use NASM-like syntax:
@@ -380,6 +381,11 @@ func (d *stepper) label(name string) (uint64, bool) {
 	for _, s := range d.p.Image.Symbols {
 		if strings.HasSuffix(s.Name, "."+strings.TrimPrefix(name, ".")) {
 			return s.Addr, true
+		}
+	}
+	if d.p.Lib != nil {
+		if a, ok := libc.Symbols(d.p.Bits)[name]; ok { // p stdout, x/gx &stdout
+			return a, true
 		}
 	}
 	return 0, false

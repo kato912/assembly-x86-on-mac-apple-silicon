@@ -113,8 +113,8 @@ _start:
 }
 
 func TestUndefinedSymbolMessage(t *testing.T) {
-	_, errs, code := runSource(t, "extern printf\nglobal main\nsection .text\nmain: call printf\n", "")
-	if code != ExitBuild || !strings.Contains(errs, "printf") || !strings.Contains(errs, "system calls") {
+	_, errs, code := runSource(t, "extern prnitf\nglobal main\nsection .text\nmain: call prnitf\n", "")
+	if code != ExitBuild || !strings.Contains(errs, "prnitf") || !strings.Contains(errs, "printf, puts") {
 		t.Errorf("code=%d err=%q", code, errs)
 	}
 }

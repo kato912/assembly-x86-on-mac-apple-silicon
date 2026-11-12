@@ -13,6 +13,7 @@ import (
 
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/emu"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/libc"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/loader"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/nasm"
 )
@@ -52,6 +53,7 @@ type Program struct {
 	Image     *loader.Image
 	CPU       *emu.CPU
 	Linux     *emu.Linux
+	Lib       *libc.Lib    // the built-in C library, when the program calls it
 	Files     []SourceFile // input files in link order; Files[0] is the main one
 	InitialSP uint64
 	ExitStub  uint64
@@ -166,7 +168,7 @@ func Build(cfg Config) (*Program, int) {
 		objects = append(objects, res.Object)
 	}
 
-	img, err := loader.Link(objects...)
+	img, err := loader.LinkWith(libc.Symbols(bits), objects...)
 	if err != nil {
 		p.Close()
 		var ue *loader.UndefinedError
@@ -174,9 +176,11 @@ func Build(cfg Config) (*Program, int) {
 		switch {
 		case errors.As(err, &ue):
 			p.errorf("err.undefined", strings.Join(ue.Names, ", "))
+			hint := i18n.T("hint.undefined", libc.Summary())
 			if len(paths) > 1 {
-				fmt.Fprintln(cfg.Stderr, "    "+i18n.T("hint.prefix")+i18n.T("hint.undefinedMulti", ue.Names[0]))
+				hint = i18n.T("hint.undefinedMulti", ue.Names[0])
 			}
+			fmt.Fprintln(cfg.Stderr, "    "+i18n.T("hint.prefix")+hint)
 		case errors.As(err, &de):
 			names := make([]string, len(de.Files))
 			for i, f := range de.Files {
@@ -261,6 +265,11 @@ func (p *Program) load() {
 	c := emu.New(p.Bits, mem, p.Linux)
 	p.CPU = c
 	p.Linux.InitBrk(c, p.Image.BrkStart)
+	p.Lib = nil
+	if len(p.Image.Externs) > 0 {
+		p.Lib = libc.Install(c, p.Linux)
+		p.Lib.Warn = p.Linux.Warn
+	}
 	for _, s := range p.Image.Sections {
 		perm := emu.PermR
 		if s.Write {
@@ -303,6 +312,9 @@ func (p *Program) load() {
 		}
 		mem.Poke(sp, leN(p.ExitStub, int(w)))
 		c.R[emu.RSP] = sp
+		if p.Lib != nil {
+			p.Lib.ExitStub = p.ExitStub
+		}
 	}
 	p.InitialSP = c.SP()
 	if p.Cfg.MaxSteps == 0 {
@@ -343,6 +355,9 @@ func (p *Program) finish(err error) int {
 	var f *emu.Fault
 	if errors.As(err, &f) {
 		fmt.Fprintln(p.Cfg.Stderr, p.Describe(f))
+		if p.Lib != nil {
+			p.Lib.Crashed() // a crashed process never prints its buffered output
+		}
 		if f.Kind == emu.FaultMaxSteps {
 			return ExitMaxSteps
 		}

@@ -39,6 +39,9 @@ func (p *Program) Where(addr uint64) string {
 	if addr == p.ExitStub && p.ExitStub != 0 {
 		return i18n.T("loc.stub")
 	}
+	if name := p.LibFunc(addr); name != "" {
+		return i18n.T("loc.libc", name)
+	}
 	if file, loc, ok := p.Locate(addr); ok {
 		s := i18n.T("loc.line", loc.Line, CodeText(loc.Text))
 		switch {
@@ -140,8 +143,19 @@ func (p *Program) Disasm(in *x86asm.Inst, pc uint64) string {
 		if s, ok := p.Image.SymbolFor(a); ok && s.Addr == a {
 			return s.Name, s.Addr
 		}
+		if name := p.LibFunc(a); name != "" {
+			return name, a
+		}
 		return "", 0
 	})
+}
+
+// LibFunc names the C library function at addr ("" if none).
+func (p *Program) LibFunc(addr uint64) string {
+	if p.Lib == nil {
+		return ""
+	}
+	return p.Lib.FuncAt(addr)
 }
 
 // Describe turns a fault into a friendly, translated message: the source
@@ -224,6 +238,11 @@ func (p *Program) Describe(f *emu.Fault) string {
 	case emu.FaultMaxSteps:
 		what = i18n.T("err.maxSteps", f.Steps)
 		hints = append(hints, i18n.T("hint.maxSteps"))
+	case emu.FaultLibc:
+		what = i18n.T(f.Detail, f.Args...)
+		if f.Hint != "" {
+			hints = append(hints, i18n.T(f.Hint, f.HintArgs...))
+		}
 	default:
 		what = f.Error()
 	}
