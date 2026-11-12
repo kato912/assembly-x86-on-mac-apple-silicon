@@ -32,9 +32,29 @@ line 14: div ecx  →  division overflow: edx:eax = 0x00000009:0x00000064 divide
 brew install kato912/tap/nasmx86
 ```
 
-This also installs `nasm`. No Homebrew account or GitHub login is needed, and
-it works even if Xcode is outdated or not installed. Update later with
-`brew upgrade nasmx86`.
+For writing and running programs, that one command is all you need. It also
+installs `nasm`, and the rest is built in: the C library (`printf`,
+`scanf`, ...), YASM's command line, and the `--step` / `--trace` debuggers.
+No Homebrew account or GitHub login is needed, and it works even if Xcode is
+outdated or not installed. Update later with `brew upgrade nasmx86`.
+
+Only if you want the **DDD** graphical debugger, install once more:
+
+```bash
+brew install ddd x86_64-elf-gdb
+brew install --cask xquartz
+```
+
+XQuartz is the X11 window system DDD draws with. Its installer asks for your
+Mac password. You don't need to log out afterwards: `nasmx86 --ddd` starts
+XQuartz by itself. For gdb on its own (`--gdb`), `brew install x86_64-elf-gdb`
+is enough.
+
+| You want to... | Install |
+|---|---|
+| assemble and run programs, call `printf`/`scanf`, use `--step`/`--trace` | `brew install kato912/tap/nasmx86` |
+| debug in DDD (`--ddd`) | the above, plus `brew install ddd x86_64-elf-gdb` and `brew install --cask xquartz` |
+| debug in gdb (`--gdb`) | the above, plus `brew install x86_64-elf-gdb` |
 
 ### Linux (or macOS without Homebrew)
 
@@ -307,12 +327,15 @@ the Linux machine: it runs the program, and gdb controls it over gdb's
 remote protocol, as it does with `gdbserver`. Your program's own input and
 output stay in the terminal where you typed the command.
 
-One-time setup on a Mac (Homebrew):
+One-time setup on a Mac (Homebrew), besides nasmx86 itself:
 
 ```bash
 brew install ddd x86_64-elf-gdb
 brew install --cask xquartz       # the X11 window system DDD draws with
 ```
+
+No logout is needed after installing XQuartz; nasmx86 starts it when DDD
+needs it.
 
 `nasmx86 --gdb prog.asm` does the same for gdb on its own (or any front-end
 that speaks gdb's remote protocol): it waits on `localhost:1234` and prints

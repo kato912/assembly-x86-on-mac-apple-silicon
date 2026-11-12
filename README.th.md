@@ -32,8 +32,27 @@ $ nasmx86 --th avg.asm
 brew install kato912/tap/nasmx86
 ```
 
-คำสั่งนี้ติดตั้ง `nasm` ให้ด้วย ไม่ต้องมีบัญชี Homebrew หรือล็อกอิน GitHub
-และใช้ได้แม้ Xcode จะเก่าหรือไม่ได้ติดตั้ง อัปเดตภายหลังด้วย `brew upgrade nasmx86`
+ถ้าจะเขียนและรันโปรแกรม ใช้คำสั่งนี้คำสั่งเดียวพอ คำสั่งนี้ติดตั้ง `nasm` ให้ด้วย ส่วนที่เหลือมีอยู่ใน nasmx86 แล้ว
+ได้แก่ ไลบรารี C (`printf`, `scanf` ...), รูปแบบคำสั่งของ YASM และดีบักเกอร์ `--step` / `--trace`
+ไม่ต้องมีบัญชี Homebrew หรือล็อกอิน GitHub และใช้ได้แม้ Xcode จะเก่าหรือไม่ได้ติดตั้ง
+อัปเดตภายหลังด้วย `brew upgrade nasmx86`
+
+ถ้าต้องการใช้ดีบักเกอร์แบบกราฟิก **DDD** ด้วย ให้ติดตั้งเพิ่มครั้งเดียว:
+
+```bash
+brew install ddd x86_64-elf-gdb
+brew install --cask xquartz
+```
+
+XQuartz คือระบบหน้าต่าง X11 ที่ DDD ใช้วาดหน้าจอ ตัวติดตั้งจะถามรหัสผ่านเครื่อง Mac
+ติดตั้งเสร็จแล้วไม่ต้องออกจากระบบ เพราะ `nasmx86 --ddd` เปิด XQuartz ให้เอง
+ถ้าจะใช้แค่ gdb (`--gdb`) ติดตั้งแค่ `brew install x86_64-elf-gdb` ก็พอ
+
+| ต้องการ... | ติดตั้ง |
+|---|---|
+| แอสเซมเบิลและรันโปรแกรม เรียก `printf`/`scanf` ใช้ `--step`/`--trace` | `brew install kato912/tap/nasmx86` |
+| ดีบักด้วย DDD (`--ddd`) | ข้างบน และ `brew install ddd x86_64-elf-gdb` กับ `brew install --cask xquartz` |
+| ดีบักด้วย gdb (`--gdb`) | ข้างบน และ `brew install x86_64-elf-gdb` |
 
 ### Linux (หรือ macOS ที่ไม่ใช้ Homebrew)
 
@@ -297,12 +316,14 @@ returned from fact: eax = 0x00000001 (1)
 รันโปรแกรม แล้วให้ gdb ควบคุมผ่านโปรโตคอล remote ของ gdb เหมือนตอนใช้ `gdbserver`
 อินพุตและเอาต์พุตของโปรแกรมยังอยู่ในเทอร์มินัลที่พิมพ์คำสั่ง
 
-ติดตั้งครั้งเดียวบน Mac (Homebrew):
+ติดตั้งครั้งเดียวบน Mac (Homebrew) นอกเหนือจากตัว nasmx86:
 
 ```bash
 brew install ddd x86_64-elf-gdb
 brew install --cask xquartz       # ระบบหน้าต่าง X11 ที่ DDD ใช้วาดหน้าจอ
 ```
+
+ติดตั้ง XQuartz แล้วไม่ต้องออกจากระบบ nasmx86 จะเปิด XQuartz ให้เองเมื่อ DDD ต้องใช้
 
 `nasmx86 --gdb prog.asm` ทำแบบเดียวกันสำหรับ gdb อย่างเดียว (หรือโปรแกรมใดก็ได้ที่ใช้โปรโตคอล remote ของ gdb):
 จะรอที่ `localhost:1234` และบอกคำสั่ง gdb ที่ต้องรันในอีกเทอร์มินัล ใช้ `--gdb=4444` เพื่อเลือกพอร์ต
