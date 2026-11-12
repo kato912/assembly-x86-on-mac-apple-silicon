@@ -118,3 +118,36 @@ func TestUndefinedSymbolMessage(t *testing.T) {
 		t.Errorf("code=%d err=%q", code, errs)
 	}
 }
+
+func TestYasmStyleSource(t *testing.T) {
+	// Program in the style of YASM course material: ddq/resdq, octal "q".
+	_, errs, code := runSource(t, `
+section .data
+S_IRUSR equ 00400q
+wide    ddq 0x1234, -2
+section .bss
+big     resdq 2
+section .text
+global _start
+_start:
+    mov rax, [wide]         ; low half of the first ddq
+    cmp rax, 0x1234
+    jne fail
+    mov rax, [wide + 24]    ; high half of -2 is all ones
+    cmp rax, -1
+    jne fail
+    mov rax, big + 32       ; resdq 2 reserved 32 bytes
+    sub rax, big
+    mov rdi, rax
+    add rdi, S_IRUSR - 256  ; 32 + 0
+    mov rax, 60
+    syscall
+fail:
+    mov rax, 60
+    mov rdi, 1
+    syscall
+`, "")
+	if code != 32 || errs != "" {
+		t.Errorf("code=%d err=%q", code, errs)
+	}
+}

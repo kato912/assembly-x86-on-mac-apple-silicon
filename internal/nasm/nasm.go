@@ -94,6 +94,11 @@ func Assemble(nasmPath, src string, bits int, extra []string, dir string, diag i
 		Listing: filepath.Join(dir, "prog.lst"),
 	}
 	args := []string{"-f", format, "-g", "-l", res.Listing, "-o", res.Object}
+	// Accept YASM-only data directives used by YASM-based course material.
+	prelude := filepath.Join(dir, "yasm-compat.inc")
+	if err := os.WriteFile(prelude, []byte(yasmCompat), 0o644); err == nil {
+		args = append(args, "-P"+prelude)
+	}
 	// Let %include find files next to the source file.
 	if d := filepath.Dir(src); d != "" {
 		args = append(args, "-I"+d+string(filepath.Separator))
@@ -118,6 +123,19 @@ func Assemble(nasmPath, src string, bits int, extra []string, dir string, diag i
 	}
 	return res, nil
 }
+
+// yasmCompat is pre-included in every assembly so that YASM syntax used by
+// course material (e.g. Jorgensen's "x86-64 Assembly Language Programming
+// with Ubuntu") assembles with NASM: resdq (128-bit reserve) and ddq
+// (128-bit integer data, which NASM's "do" does not accept).
+const yasmCompat = `%idefine resdq reso
+%imacro ddq 1-*
+  %rep %0
+    dq (%1), -((%1) < 0)
+    %rotate 1
+  %endrep
+%endmacro
+`
 
 func hasWarningFlag(args []string) bool {
 	for _, a := range args {
