@@ -15,14 +15,17 @@ var (
 	sysRE    = regexp.MustCompile(`\bsyscall\b`)
 	int80RE  = regexp.MustCompile(`\bint\s+(?:0x80|80h|0x80h|128|0h80|\$80)\b`)
 	defRelRE = regexp.MustCompile(`^default\s+rel\b`)
+	// esp/ebp: 32-bit stack code such as cdecl calls (push x / call printf
+	// / add esp, 8) — the weakest evidence, used when nothing else tells.
+	stack32RE = regexp.MustCompile(`\be[sb]p\b`)
 )
 
 // DetectBits guesses whether a NASM source file is 32- or 64-bit code.
 // It returns the mode and a short human-readable reason.
 //
 // Order of evidence: an explicit BITS directive, use of 64-bit registers or
-// `default rel`, then `syscall` (64) vs `int 0x80` (32). With no evidence at
-// all it defaults to 64-bit.
+// `default rel`, then `syscall` (64) vs `int 0x80` (32), then use of esp or
+// ebp (32). With no evidence at all it defaults to 64-bit.
 func DetectBits(src []byte) (bits int, reason string) {
 	var e evidence
 	e.scan(src, "", nil, 0)
@@ -41,6 +44,7 @@ type evidence struct {
 	bits                  int
 	bitsWhy               string
 	reg64, syscall, int80 string
+	stack32               string
 	seen                  map[string]bool
 }
 
@@ -54,6 +58,8 @@ func (e *evidence) decide() (int, string) {
 		return 64, e.syscall
 	case e.int80 != "":
 		return 32, e.int80
+	case e.stack32 != "":
+		return 32, e.stack32
 	}
 	return 64, "default"
 }
@@ -91,6 +97,11 @@ func (e *evidence) scan(src []byte, dir string, dirs []string, depth int) {
 		}
 		if e.int80 == "" && int80RE.MatchString(code) {
 			e.int80 = "uses int 0x80"
+		}
+		if e.stack32 == "" {
+			if m := stack32RE.FindString(code); m != "" {
+				e.stack32 = "uses register " + m
+			}
 		}
 	}
 }

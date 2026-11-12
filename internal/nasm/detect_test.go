@@ -23,6 +23,9 @@ func TestDetectBits(t *testing.T) {
 		{"default rel\nmov eax, 1", 64},
 		{"mov eax, 1", 64},
 		{"use32\nnop", 32},
+		{"extern printf\npush msg\ncall printf\nadd esp, 4", 32}, // cdecl call
+		{"push ebp\nmov ebp, esp\nsyscall", 64},
+		{"mov rbp, rsp\nmov eax, [ebp]", 64},
 	}
 	for _, c := range cases {
 		if got, why := DetectBits([]byte(c.src)); got != c.bits {
