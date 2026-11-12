@@ -51,8 +51,9 @@ type Image struct {
 	Entry     uint64
 	EntryName string // "_start", "main" or "" (start of .text)
 	Sections  []*Section
-	Symbols   []Symbol // sorted by address
-	BrkStart  uint64   // first address after the program (page aligned)
+	Symbols   []Symbol        // sorted by address
+	BrkStart  uint64          // first address after the program (page aligned)
+	Externs   map[string]bool // external (C library) symbols the program uses
 }
 
 // UndefinedError lists symbols used but never defined (e.g. extern printf).
@@ -84,7 +85,12 @@ type object struct {
 
 // Link links one or more relocatable ELF objects (as produced by nasm)
 // into a single image. global/extern symbols are resolved across files.
-func Link(paths ...string) (*Image, error) {
+func Link(paths ...string) (*Image, error) { return LinkWith(nil, paths...) }
+
+// LinkWith is Link with external symbols (the built-in C library):
+// undefined symbols found in externs resolve to those addresses, and the
+// names used are recorded in Image.Externs.
+func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("no object files to link")
 	}
@@ -274,6 +280,12 @@ func Link(paths ...string) (*Image, error) {
 			}
 			if g, ok := globals[s.Name]; ok {
 				o.symAddr[i], o.resolved[i] = g.addr, true
+			} else if a, ok := externs[s.Name]; ok {
+				o.symAddr[i], o.resolved[i] = a, true
+				if img.Externs == nil {
+					img.Externs = map[string]bool{}
+				}
+				img.Externs[s.Name] = true
 			} else if !seenUndef[s.Name] {
 				seenUndef[s.Name] = true
 				undefined = append(undefined, s.Name)
