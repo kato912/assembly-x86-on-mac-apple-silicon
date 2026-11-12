@@ -43,10 +43,16 @@ func (p *Program) Where(addr uint64) string {
 		return i18n.T("loc.libc", name)
 	}
 	if file, loc, ok := p.Locate(addr); ok {
-		s := i18n.T("loc.line", loc.Line, CodeText(loc.Text))
+		text := CodeText(loc.Text)
+		if name := loc.File + p.Files[file].Lines.Source; strings.EqualFold(filepath.Ext(name), ".c") {
+			text = strings.Join(strings.Fields(loc.Text), " ") // C: ; ends a statement, not a comment
+		}
+		s := i18n.T("loc.line", loc.Line, text)
 		switch {
 		case loc.File != "":
 			s = loc.File + " " + s
+		case p.Files[file].Lines.Source != "":
+			s = filepath.Base(p.Files[file].Lines.Source) + " " + s // linked from an object file
 		case len(p.Files) > 1:
 			s = filepath.Base(p.Files[file].Path) + " " + s
 		}
@@ -66,6 +72,9 @@ func (p *Program) Where(addr uint64) string {
 func (p *Program) FileIndex(name string) (int, bool) {
 	for i, f := range p.Files {
 		if f.Path == name || filepath.Base(f.Path) == name || filepath.Base(f.Path) == filepath.Base(name) {
+			return i, true
+		}
+		if f.Lines != nil && f.Lines.Source != "" && filepath.Base(f.Lines.Source) == filepath.Base(name) {
 			return i, true
 		}
 	}

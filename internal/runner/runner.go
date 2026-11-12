@@ -132,6 +132,14 @@ func Build(cfg Config) (*Program, int) {
 	for i, path := range paths {
 		if srcs[i] == nil {
 			objects = append(objects, path)
+			// Source lines from the object's debug information, if any
+			// (yasm -g dwarf2).
+			if lm, err := nasm.DWARFLines(path); err == nil {
+				p.Files[i].Lines = lm
+				if data, err := os.ReadFile(lm.Source); err == nil {
+					p.Files[i].Source = strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+				}
+			}
 			continue
 		}
 		if nasmPath == "" {

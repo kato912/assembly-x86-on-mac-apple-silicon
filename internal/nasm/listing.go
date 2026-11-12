@@ -30,6 +30,10 @@ type entry struct {
 
 // LineMap maps section offsets to source lines, built from a nasm listing.
 type LineMap struct {
+	// Source is the main source file, when the map comes from an object
+	// file's debug information (DWARFLines); "" for a nasm listing.
+	Source string
+
 	sections map[string][]entry // sorted by off
 	lines    map[int][]SecOff   // main-file line -> code/data emitted for it
 	texts    map[int]string     // main-file line -> text
