@@ -117,6 +117,66 @@ Errors and `--trace` name the file (`io.asm line 12: ...`), and the debugger
 accepts `b io.asm:12`. To pass an argument that ends in `.asm` to the program,
 put `--` before it.
 
+### Calling C functions (`printf`, `scanf`, ...)
+
+Programs that call the C library — the "calling C from assembly" chapter of
+many courses — run as they are. Declare the functions `extern`, write `main`,
+and use the normal calling conventions (64-bit: arguments in
+`rdi, rsi, rdx, rcx, r8, r9`, then the stack, and `al` = 0; 32-bit: push the
+arguments right to left and pop them after the call):
+
+```nasm
+extern printf
+section .data
+    fmt db "%d + %d = %d", 10, 0
+section .text
+global main
+main:
+    push rbp            ; keeps the stack 16-byte aligned for the call
+    mov rdi, fmt
+    mov rsi, 2
+    mov rdx, 3
+    lea rcx, [rsi+rdx]
+    xor eax, eax        ; no floating-point arguments
+    call printf
+    pop rbp
+    xor eax, eax        ; return 0
+    ret
+```
+
+nasmx86 has its own C library built in (no gcc or glibc needed) that behaves
+like glibc, so what works here works on Linux with `gcc -no-pie prog.o`
+([`examples/printf64.asm`](examples/printf64.asm)):
+
+- output is buffered like glibc: line by line on a terminal, in blocks when
+  piped. `exit` and returning from `main` write it; ending with the exit
+  *system call* (or crashing) loses it — on Linux too — and nasmx86 tells you;
+- a call may change `rax rcx rdx rsi rdi r8-r11` (`eax ecx edx` in 32-bit),
+  as real C functions do: a loop counter kept in `rcx` across `call printf`
+  breaks here just as it does on Linux;
+- a misaligned stack, passing a value where `scanf` needs an address, `free`
+  twice, `mov rdi, stdout` instead of `mov rdi, [stdout]`... are reported at
+  the `call` line with a hint;
+- `--trace` and the debugger show each call: `call printf → printf("x = %d\n", 5) = 6`.
+
+Available functions: `printf fprintf sprintf snprintf dprintf puts fputs
+putchar putc fputc fwrite fflush scanf fscanf sscanf getchar getc fgetc ungetc
+fgets gets fopen fclose feof` (and `stdin stdout stderr`), `exit _exit abort
+atoi atol atoll strtol strtoul abs labs malloc calloc realloc free rand srand`,
+`strlen strcpy strncpy strcat strncat strcmp strncmp strchr strrchr strstr
+strdup memset memcpy memmove memcmp`, `toupper tolower isdigit isalpha isalnum
+isspace isupper islower isxdigit ispunct isprint`, `time sleep usleep`.
+In 64-bit mode `printf("%f")` is not available (doubles go in SSE registers,
+which nasmx86 does not emulate); in 32-bit mode doubles pushed on the stack
+print fine. `call printf wrt ..plt` and `call [rel printf wrt ..got]` work too.
+
+### YASM
+
+Course material written for YASM runs too: nasmx86 accepts yasm's command
+line (`nasmx86 -f elf64 -g dwarf2 prog.asm`, `-o`/`-l` are ignored), `.s`
+files, and YASM's `ddq`/`resdq` directives. The source is assembled with
+NASM, whose syntax YASM shares.
+
 ### 32 or 64 bit?
 
 nasmx86 decides automatically (it also looks inside `%include` files):
@@ -124,7 +184,8 @@ nasmx86 decides automatically (it also looks inside `%include` files):
 1. a `bits 32` / `bits 64` directive wins;
 2. 64-bit registers (`rax`, `r8`, ...) or `default rel` → 64-bit;
 3. `syscall` → 64-bit, `int 0x80` → 32-bit;
-4. otherwise 64-bit.
+4. `esp`/`ebp` (32-bit stack code such as `push x` / `call printf` / `add esp, 8`) → 32-bit;
+5. otherwise 64-bit.
 
 Force it with `-32` / `-64`, or with the nasm flag from your class sheet:
 `nasmx86 -f elf32 hello.asm`.
@@ -245,7 +306,8 @@ returned from fact: eax = 0x00000001 (1)
 | `ret` in `_start`, unbalanced `push`/`ret` | explains the stack problem |
 | infinite recursion | `stack overflow` |
 | infinite loop | stops after `--max-steps` and says so |
-| `int 21h` (DOS), `printf` (C library), x87/SSE | says why it cannot work on Linux / in nasmx86 |
+| `scanf` given a value instead of an address, misaligned stack at `call printf`, `free` twice | explains the mistake at the `call` line |
+| `int 21h` (DOS), x87/SSE | says why it cannot work on Linux / in nasmx86 |
 
 The exit status mimics Linux: 139 for a segmentation fault, 136 for a divide
 error, etc.
@@ -279,7 +341,9 @@ warning.
 
 ## Limitations
 
-- No C library: `extern printf` etc. cannot work — use system calls.
+- The built-in C library has the functions listed [above](#calling-c-functions-printf-scanf-)
+  (no `%f` in 64-bit mode, no locales or wide characters). C source files
+  (calling your assembly from `main.c`) are not compiled — nasmx86 runs assembly.
 - NASM syntax for Linux only: not MASM/TASM, GAS (AT&T), DOS (`int 21h`) or Windows programs.
 - No floating point (x87), SSE/AVX, or privileged instructions.
 - Single-threaded; no signals, `mmap`, `fork`, sockets.

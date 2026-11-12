@@ -113,6 +113,62 @@ nasmx86 main.asm io.o                 # ไฟล์ที่แปลงด้�
 ข้อความ error และ `--trace` จะบอกชื่อไฟล์ (`io.asm line 12: ...`) และในดีบักเกอร์ใช้
 `b io.asm:12` ได้ ถ้าต้องการส่งอาร์กิวเมนต์ที่ลงท้ายด้วย `.asm` ให้โปรแกรม ให้ใส่ `--` นำหน้า
 
+### เรียกฟังก์ชันภาษา C (`printf`, `scanf`, ...)
+
+โปรแกรมที่เรียกไลบรารี C — แบบบท "calling C from assembly" ของหลายวิชา — รันได้เลย
+ประกาศฟังก์ชันด้วย `extern` เขียน `main` แล้วเรียกตาม calling convention ปกติ
+(64 บิต: อาร์กิวเมนต์อยู่ใน `rdi, rsi, rdx, rcx, r8, r9` ที่เหลือใส่สแตก และ `al` = 0;
+32 บิต: push อาร์กิวเมนต์จากขวาไปซ้าย แล้ว pop ออกหลัง call):
+
+```nasm
+extern printf
+section .data
+    fmt db "%d + %d = %d", 10, 0
+section .text
+global main
+main:
+    push rbp            ; ให้สแตกจัดแนว 16 ไบต์ก่อน call
+    mov rdi, fmt
+    mov rsi, 2
+    mov rdx, 3
+    lea rcx, [rsi+rdx]
+    xor eax, eax        ; ไม่มีอาร์กิวเมนต์ทศนิยม
+    call printf
+    pop rbp
+    xor eax, eax        ; return 0
+    ret
+```
+
+nasmx86 มีไลบรารี C ในตัว (ไม่ต้องมี gcc หรือ glibc) ที่ทำงานเหมือน glibc
+โค้ดที่รันได้ที่นี่จึงรันบน Linux ด้วย `gcc -no-pie prog.o` ได้เหมือนกัน
+([`examples/printf64.asm`](examples/printf64.asm)):
+
+- output ถูกบัฟเฟอร์เหมือน glibc: ทีละบรรทัดเมื่อแสดงบนเทอร์มินัล ทีละก้อนเมื่อส่งต่อด้วย pipe
+  `exit` และการ return ออกจาก `main` จะเขียนออกให้ แต่ถ้าจบด้วย *system call* exit
+  (หรือโปรแกรมพัง) ข้อความจะหาย — บน Linux ก็หาย — และ nasmx86 จะเตือนให้
+- การเรียกฟังก์ชันอาจเปลี่ยนค่า `rax rcx rdx rsi rdi r8-r11` (`eax ecx edx` ใน 32 บิต)
+  เหมือนฟังก์ชัน C จริง: ถ้าเก็บตัวนับลูปไว้ใน `rcx` ข้าม `call printf` จะพังที่นี่เหมือนบน Linux
+- สแตกไม่จัดแนว, ส่งค่าแทนแอดเดรสให้ `scanf`, `free` ซ้ำ, `mov rdi, stdout`
+  แทน `mov rdi, [stdout]` ฯลฯ จะถูกรายงานที่บรรทัด `call` พร้อมคำแนะนำ
+- `--trace` และดีบักเกอร์แสดงทุกการเรียก: `call printf → printf("x = %d\n", 5) = 6`
+
+ฟังก์ชันที่มี: `printf fprintf sprintf snprintf dprintf puts fputs putchar putc
+fputc fwrite fflush scanf fscanf sscanf getchar getc fgetc ungetc fgets gets fopen
+fclose feof` (และ `stdin stdout stderr`), `exit _exit abort atoi atol atoll strtol
+strtoul abs labs malloc calloc realloc free rand srand`, `strlen strcpy strncpy
+strcat strncat strcmp strncmp strchr strrchr strstr strdup memset memcpy memmove
+memcmp`, `toupper tolower isdigit isalpha isalnum isspace isupper islower isxdigit
+ispunct isprint`, `time sleep usleep`
+ในโหมด 64 บิตยังใช้ `printf("%f")` ไม่ได้ (ค่า double ส่งผ่านรีจิสเตอร์ SSE ซึ่ง nasmx86
+ยังไม่รองรับ) ส่วนโหมด 32 บิต double ที่ push ลงสแตกแสดงผลได้ปกติ
+`call printf wrt ..plt` และ `call [rel printf wrt ..got]` ก็ใช้ได้
+
+### YASM
+
+เอกสารประกอบการเรียนที่เขียนสำหรับ YASM ก็รันได้: nasmx86 รับคำสั่งแบบ yasm
+(`nasmx86 -f elf64 -g dwarf2 prog.asm` โดย `-o`/`-l` จะถูกข้าม), ไฟล์ `.s`
+และคำสั่ง `ddq`/`resdq` ของ YASM ตัวโค้ดถูกแปลงด้วย NASM ซึ่งใช้ syntax เดียวกับ YASM
+
 ### 32 หรือ 64 บิต?
 
 nasmx86 เลือกให้อัตโนมัติ (ดูในไฟล์ที่ `%include` ด้วย):
@@ -120,7 +176,8 @@ nasmx86 เลือกให้อัตโนมัติ (ดูในไฟ�
 1. ถ้ามี `bits 32` / `bits 64` จะใช้ตามนั้น
 2. ใช้รีจิสเตอร์ 64 บิต (`rax`, `r8`, ...) หรือ `default rel` → 64 บิต
 3. ใช้ `syscall` → 64 บิต, ใช้ `int 0x80` → 32 บิต
-4. ถ้าไม่มีอะไรบอก → 64 บิต
+4. ใช้ `esp`/`ebp` (โค้ดสแตก 32 บิต เช่น `push x` / `call printf` / `add esp, 8`) → 32 บิต
+5. ถ้าไม่มีอะไรบอก → 64 บิต
 
 บังคับเองได้ด้วย `-32` / `-64` หรือใช้ตัวเลือกแบบ nasm ตามเอกสารในห้องเรียน:
 `nasmx86 -f elf32 hello.asm`
@@ -241,7 +298,8 @@ returned from fact: eax = 0x00000001 (1)
 | ใช้ `ret` ใน `_start`, `push`/`ret` ไม่สมดุล | อธิบายปัญหาของสแตก |
 | เรียกซ้ำไม่รู้จบ | `สแตกล้น (stack overflow)` |
 | ลูปไม่รู้จบ | หยุดเมื่อครบ `--max-steps` และบอกสาเหตุ |
-| `int 21h` (DOS), `printf` (ไลบรารี C), x87/SSE | อธิบายว่าทำไมใช้บน Linux / ใน nasmx86 ไม่ได้ |
+| ส่งค่าแทนแอดเดรสให้ `scanf`, สแตกไม่จัดแนวตอน `call printf`, `free` ซ้ำ | อธิบายข้อผิดพลาดที่บรรทัด `call` |
+| `int 21h` (DOS), x87/SSE | อธิบายว่าทำไมใช้บน Linux / ใน nasmx86 ไม่ได้ |
 
 exit status เลียนแบบ Linux: 139 เมื่อ segmentation fault, 136 เมื่อหารผิดพลาด เป็นต้น
 
@@ -272,7 +330,9 @@ clock_gettime nanosleep exit exit_group` ตัวอื่นจะคืนค
 
 ## ข้อจำกัด
 
-- ไม่มีไลบรารี C: ใช้ `extern printf` ฯลฯ ไม่ได้ — ให้ใช้ system call
+- ไลบรารี C ในตัวมีฟังก์ชันตามรายการ[ด้านบน](#เรียกฟังก์ชันภาษา-c-printf-scanf-)
+  (ไม่มี `%f` ในโหมด 64 บิต ไม่มี locale หรือ wide character) และไม่คอมไพล์ไฟล์ภาษา C
+  (เช่น `main.c` ที่เรียกโค้ดแอสเซมบลี) — nasmx86 รันเฉพาะแอสเซมบลี
 - รองรับเฉพาะ syntax ของ NASM สำหรับ Linux: ไม่รองรับ MASM/TASM, GAS (AT&T), โปรแกรม DOS (`int 21h`) หรือ Windows
 - ไม่รองรับทศนิยม (x87), SSE/AVX และคำสั่งสิทธิ์พิเศษ
 - ทำงานเธรดเดียว ไม่มี signal, `mmap`, `fork`, socket
