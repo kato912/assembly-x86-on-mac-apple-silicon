@@ -37,6 +37,16 @@ func (e usageError) Error() string { return string(e) }
 
 func main() {
 	i18n.Init()
+	// Started as ld or gcc (links to nasmx86 first on PATH), or
+	// with a subcommand such as nasmx86 ld.
+	if code, ok := runTool(filepath.Base(os.Args[0]), os.Args[1:]); ok {
+		os.Exit(code)
+	}
+	if len(os.Args) > 1 {
+		if code, ok := subcommand(os.Args[1], os.Args[2:]); ok {
+			os.Exit(code)
+		}
+	}
 	opts, err := parseArgs(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("err.prefix")+err.Error())
@@ -52,6 +62,34 @@ func main() {
 		return
 	}
 	os.Exit(run(opts))
+}
+
+// toolNames are the Linux commands nasmx86 can stand in for.
+var toolNames = []string{"ld", "gcc"}
+
+// runTool runs nasmx86 as the Linux command name, if it is one of toolNames.
+func runTool(name string, args []string) (int, bool) {
+	switch strings.TrimSuffix(name, ".exe") {
+	case "ld":
+		return ldMain(args), true
+	case "gcc":
+		return gccMain(args), true
+	}
+	return 0, false
+}
+
+// subcommand handles nasmx86 ld (or gcc) for systems where
+// those names are not links to nasmx86.
+func subcommand(name string, args []string) (int, bool) {
+	for _, t := range toolNames {
+		if name == t {
+			if _, err := os.Stat(name); err == nil {
+				return 0, false // a program file with that name: run it
+			}
+			return runTool(name, args)
+		}
+	}
+	return 0, false
 }
 
 // versionString formats the version; 0.x releases are marked as beta.

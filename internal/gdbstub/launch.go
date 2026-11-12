@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/i18n"
+	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/pathfind"
 	"github.com/kato912/assembly-x86-on-mac-apple-silicon/internal/runner"
 )
 
@@ -213,17 +214,10 @@ func x11Env(say func(string, ...any)) ([]string, bool) {
 // toolDirs are where Homebrew puts programs, in case PATH lacks them.
 var toolDirs = []string{"/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin"}
 
+// find looks for a program on PATH and in toolDirs. It never returns
+// nasmx86 itself, which may be on PATH as "ddd" or "gdb".
 func find(name string) (string, bool) {
-	if p, err := exec.LookPath(name); err == nil {
-		return p, true
-	}
-	for _, d := range toolDirs {
-		p := filepath.Join(d, name)
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p, true
-		}
-	}
-	return "", false
+	return pathfind.Other(name, toolDirs...)
 }
 
 // FindDDD finds the DDD front-end.
