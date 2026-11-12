@@ -36,6 +36,8 @@ That one command installs everything the course needs:
 
 - `nasmx86`, `nasm` and `yasm`, to write and run programs. The C library
   (`printf`, `scanf`, ...) and the `--step` / `--trace` debuggers are built in.
+  `nasm-x86` and `yasm-x86` are the same nasm and yasm under names that say
+  the code is x86 (a Mac's own processor is Arm).
 - The Linux commands from course sheets: in a **new** terminal window,
   `ld -o hello hello.o`, `./hello`, `gcc -o cprintf printf.o` and
   `ddd ./hello &` work as typed ([below](#linux-commands-as-in-your-course)).
@@ -129,14 +131,22 @@ nasmx86 main.asm io.asm           # a program split over several files
 
 Course sheets for Linux assemble, link, run and debug in separate steps. On a
 Mac, after `brew install kato912/tap/nasmx86`, open a **new** terminal
-window and type them as written:
+window and type them as written, with `nasm-x86` or `yasm-x86` for the
+assembler — whichever your instructor uses:
 
 ```bash
-yasm -f elf64 -g dwarf2 -o hello.o hello.s   # assemble (yasm or nasm)
-ld -o hello hello.o                          # link a program that starts at _start
-./hello                                      # run it
-ddd ./hello &                                # debug it in DDD (or: gdb ./hello)
+nasm-x86 -f elf64 -g -F dwarf -o hello.o hello.asm   # assemble with nasm
+yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s       # ... or with yasm
+ld -o hello hello.o                                  # link a program that starts at _start
+./hello                                              # run it
+ddd ./hello &                                        # debug it in DDD (or: gdb ./hello)
 ```
+
+`nasm-x86` and `yasm-x86` run the real `nasm` and `yasm` (which also work
+under their own names), with three conveniences: each takes the other's
+debug option (`-g dwarf2` or `-g -F dwarf`), and without `-f` they make an
+`elf64` object, or `elf32` for 32-bit code (nasm alone would make a flat
+binary). `-l hello.lst` writes a listing as usual.
 
 A program with `main` that calls C functions, or C code that calls your
 assembly, is linked with `gcc`, as on Linux:
@@ -240,7 +250,7 @@ print fine. `call printf wrt ..plt` and `call [rel printf wrt ..got]` work too.
 
 Course material written for YASM runs too. `brew install` brings the real
 `yasm`, for the [Linux commands](#linux-commands-as-in-your-course)
-(`yasm -f elf64 -g dwarf2 -o hello.o hello.s`, `-l hello.lst` for a
+(`yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s`, `-l hello.lst` for a
 listing). `nasmx86 prog.s` on its own also accepts yasm's command line
 (`nasmx86 -f elf64 -g dwarf2 prog.s`, `-o`/`-l` are ignored), `.s` files and
 YASM's `ddq`/`resdq` directives: it assembles with NASM, whose syntax YASM

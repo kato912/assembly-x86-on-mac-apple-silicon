@@ -36,6 +36,8 @@ brew install kato912/tap/nasmx86
 
 - `nasmx86`, `nasm` และ `yasm` สำหรับเขียนและรันโปรแกรม ไลบรารี C (`printf`, `scanf` ...)
   และดีบักเกอร์ `--step` / `--trace` มีอยู่ใน nasmx86 แล้ว
+  ส่วน `nasm-x86` และ `yasm-x86` คือ nasm และ yasm ตัวเดิมในชื่อที่บอกว่าเป็นโค้ด x86
+  (ชิปของ Mac เองเป็น Arm)
 - คำสั่งแบบ Linux ตามเอกสารประกอบวิชา: ในหน้าต่างเทอร์มินัล**ใหม่** พิมพ์ `ld -o hello hello.o`,
   `./hello`, `gcc -o cprintf printf.o` และ `ddd ./hello &` ได้ตามที่เขียนไว้เลย
   ([ด้านล่าง](#คำสั่งแบบ-linux-ตามที่เรียน))
@@ -123,14 +125,21 @@ nasmx86 main.asm io.asm           # โปรแกรมที่แยกเ�
 ### คำสั่งแบบ Linux ตามที่เรียน
 
 เอกสารประกอบวิชาบน Linux จะ assemble, ลิงก์, รัน และดีบักทีละขั้น บน Mac หลัง
-`brew install kato912/tap/nasmx86` ให้เปิดหน้าต่างเทอร์มินัล**ใหม่** แล้วพิมพ์ตามเอกสารได้เลย:
+`brew install kato912/tap/nasmx86` ให้เปิดหน้าต่างเทอร์มินัล**ใหม่** แล้วพิมพ์ตามเอกสารได้เลย
+โดยคำสั่ง assemble ใช้ `nasm-x86` หรือ `yasm-x86` แล้วแต่อาจารย์ใช้ตัวไหน:
 
 ```bash
-yasm -f elf64 -g dwarf2 -o hello.o hello.s   # assemble (yasm หรือ nasm)
-ld -o hello hello.o                          # ลิงก์โปรแกรมที่เริ่มที่ _start
-./hello                                      # รัน
-ddd ./hello &                                # ดีบักใน DDD (หรือ gdb ./hello)
+nasm-x86 -f elf64 -g -F dwarf -o hello.o hello.asm   # assemble ด้วย nasm
+yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s       # ... หรือด้วย yasm
+ld -o hello hello.o                                  # ลิงก์โปรแกรมที่เริ่มที่ _start
+./hello                                              # รัน
+ddd ./hello &                                        # ดีบักใน DDD (หรือ gdb ./hello)
 ```
+
+`nasm-x86` และ `yasm-x86` เรียก `nasm` และ `yasm` ตัวจริง (ซึ่งพิมพ์ชื่อเดิมก็ยังใช้ได้)
+โดยช่วยเพิ่มสามอย่าง: รับตัวเลือก debug ของอีกตัวได้ด้วย (`-g dwarf2` หรือ `-g -F dwarf`)
+และถ้าไม่ใส่ `-f` จะได้ไฟล์ object แบบ `elf64` หรือ `elf32` สำหรับโค้ด 32 บิต
+(ถ้าใช้ nasm เปล่า ๆ จะได้ไฟล์ binary ล้วน) ส่วน `-l hello.lst` ยังเขียนไฟล์ listing ได้ตามปกติ
 
 โปรแกรมที่มี `main` และเรียกฟังก์ชันภาษา C หรือโค้ด C ที่เรียกแอสเซมบลีของเรา ให้ลิงก์ด้วย `gcc`
 เหมือนบน Linux:
@@ -225,7 +234,7 @@ ispunct isprint`, `time sleep usleep`
 ### YASM
 
 เอกสารประกอบการเรียนที่เขียนสำหรับ YASM ก็รันได้ `brew install` ติดตั้ง `yasm` ตัวจริงมาให้
-สำหรับ[คำสั่งแบบ Linux](#คำสั่งแบบ-linux-ตามที่เรียน) (`yasm -f elf64 -g dwarf2 -o hello.o hello.s`
+สำหรับ[คำสั่งแบบ Linux](#คำสั่งแบบ-linux-ตามที่เรียน) (`yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s`
 และ `-l hello.lst` สำหรับไฟล์ listing) ส่วน `nasmx86 prog.s` ก็รับคำสั่งแบบ yasm
 (`nasmx86 -f elf64 -g dwarf2 prog.s` โดย `-o`/`-l` จะถูกข้าม), ไฟล์ `.s`
 และคำสั่ง `ddq`/`resdq` ของ YASM ได้เช่นกัน โดยแปลงด้วย NASM ซึ่งใช้ syntax เดียวกับ YASM
