@@ -404,6 +404,27 @@ bad:
     ret
 `, out: "x\n"},
 
+		{name: "PIE-style calls through the GOT and PLT", src: `
+default rel
+extern printf, fflush, stdout
+section .data
+f db "got %d", 10, 0
+section .text
+global main
+main:
+    push rbp
+    lea rdi, [f]
+    mov esi, 7
+    xor eax, eax
+    call [rel printf wrt ..got]
+    mov rax, [rel stdout wrt ..got]
+    mov rdi, [rax]
+    call fflush wrt ..plt
+    xor eax, eax
+    pop rbp
+    ret
+`, out: "got 7\n"},
+
 		{name: "scanf value instead of address", stdin: "5\n", src: `
 default rel
 extern scanf

@@ -80,7 +80,8 @@ type object struct {
 	secs     map[int]*Section // ELF section index -> placed section
 	syms     []elf.Symbol
 	symAddr  []uint64
-	resolved []bool // symAddr is valid
+	resolved []bool         // symAddr is valid
+	got      map[int]uint64 // symbol index -> its GOT slot (for wrt ..got)
 }
 
 // Link links one or more relocatable ELF objects (as produced by nasm)
@@ -199,6 +200,47 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 		bss = append(bss, commonSec)
 	}
 
+	// A GOT holds the addresses of symbols used with "wrt ..got"
+	// (R_X86_64_GOTPCREL*), e.g. call [rel printf wrt ..got].
+	type gotRef struct{ obj, sym int }
+	var gotRefs []gotRef
+	var gotSec *Section
+	if img.Bits == 64 {
+		for oi, o := range objs {
+			for _, rs := range o.f.Sections {
+				if rs.Type != elf.SHT_RELA && rs.Type != elf.SHT_REL {
+					continue
+				}
+				raw, err := rs.Data()
+				if err != nil {
+					return nil, err
+				}
+				ent := 16
+				if rs.Type == elf.SHT_RELA {
+					ent = 24
+				}
+				for off := 0; off+ent <= len(raw); off += ent {
+					info := binary.LittleEndian.Uint64(raw[off+8:])
+					sym, typ := int(info>>32), elf.R_X86_64(uint32(info))
+					if !isGOTPCREL(typ) || sym == 0 {
+						continue
+					}
+					if o.got == nil {
+						o.got = map[int]uint64{}
+					}
+					if _, ok := o.got[sym]; !ok {
+						o.got[sym] = uint64(len(gotRefs)) * 8 // offset for now
+						gotRefs = append(gotRefs, gotRef{oi, sym})
+					}
+				}
+			}
+		}
+		if len(gotRefs) > 0 {
+			gotSec = &Section{Name: ".got", Size: uint64(len(gotRefs)) * 8, Data: make([]byte, len(gotRefs)*8), Write: true, index: -1, align: 8}
+			data = append([]*Section{gotSec}, data...)
+		}
+	}
+
 	// 2. Lay out.
 	base := uint64(Base64)
 	if img.Bits == 32 {
@@ -293,6 +335,21 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 		}
 	}
 
+	// Fill the GOT now that addresses are known.
+	if gotSec != nil {
+		for _, o := range objs {
+			for sym, off := range o.got {
+				o.got[sym] = gotSec.Addr + off
+			}
+		}
+		for i, r := range gotRefs {
+			o := objs[r.obj]
+			if r.sym-1 < len(o.symAddr) && o.resolved[r.sym-1] {
+				binary.LittleEndian.PutUint64(gotSec.Data[i*8:], o.symAddr[r.sym-1])
+			}
+		}
+	}
+
 	// 4. Apply relocations.
 	for _, o := range objs {
 		for _, rs := range o.f.Sections {
@@ -307,7 +364,7 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := relocate(img.Bits, rs.Type == elf.SHT_RELA, raw, target, o.syms, o.symAddr, o.resolved); err != nil {
+			if err := relocate(img.Bits, rs.Type == elf.SHT_RELA, raw, target, o.syms, o.symAddr, o.resolved, o.got); err != nil {
 				return nil, err
 			}
 		}
@@ -340,7 +397,11 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 	return img, nil
 }
 
-func relocate(bits int, rela bool, raw []byte, target *Section, syms []elf.Symbol, symAddr []uint64, resolved []bool) error {
+func isGOTPCREL(t elf.R_X86_64) bool {
+	return t == elf.R_X86_64_GOTPCREL || t == elf.R_X86_64_GOTPCRELX || t == elf.R_X86_64_REX_GOTPCRELX
+}
+
+func relocate(bits int, rela bool, raw []byte, target *Section, syms []elf.Symbol, symAddr []uint64, resolved []bool, got map[int]uint64) error {
 	le := binary.LittleEndian
 	entSize := 8
 	switch {
@@ -400,6 +461,9 @@ func relocate(bits int, rela bool, raw []byte, target *Section, syms []elf.Symbo
 				width, signed = 4, true
 			case elf.R_X86_64_PC32, elf.R_X86_64_PLT32:
 				width, pcrel, signed = 4, true, true
+			case elf.R_X86_64_GOTPCREL, elf.R_X86_64_GOTPCRELX, elf.R_X86_64_REX_GOTPCRELX:
+				width, pcrel, signed = 4, true, true
+				S = got[symIdx] // the address of the symbol's GOT slot
 			case elf.R_X86_64_16:
 				width = 2
 			case elf.R_X86_64_PC16:
