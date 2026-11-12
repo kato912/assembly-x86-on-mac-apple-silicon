@@ -137,6 +137,9 @@ func Run(p *runner.Program, exe string, o Options) int {
 		if os.Getenv("NASMX86_GDB_LOG") != "" {
 			s.Log = o.Log
 		}
+		if o.DDD || o.GDB {
+			s.UseConsole() // the program's I/O in gdb's (DDD's) console
+		}
 		code := s.Serve(c)
 		if dddDone != nil {
 			<-dddDone

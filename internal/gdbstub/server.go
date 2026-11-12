@@ -50,6 +50,13 @@ type Server struct {
 	exitCode int
 	fault    *emu.Fault // the program crashed; continuing ends it
 	killed   bool
+
+	// The program's standard I/O through gdb (fileio.go).
+	console bool
+	running bool   // in resume: gdb waits for a stop reply, so File-I/O requests are allowed
+	stopNow bool   // gdb's Ctrl-C came during a File-I/O request: stop after this instruction
+	fio     []byte // the File-I/O buffer, at fioAt in the program's address space
+	fioAt   uint64
 }
 
 // New prepares a server for p (already built and loaded).
@@ -305,6 +312,8 @@ func (s *Server) resume(step bool) string {
 	}
 	c := s.p.CPU
 	s.intr.Store(false)
+	s.running, s.stopNow = true, false
+	defer func() { s.running = false }()
 	for n := 0; ; n++ {
 		// Like an int3 on real hardware, a breakpoint at the resume address
 		// stops at once; gdb removes it first when it means to step over it.
@@ -317,8 +326,17 @@ func (s *Server) resume(step bool) string {
 		}
 		s.hitSet = false
 		err := c.Step()
+		if errors.Is(err, emu.ErrInterrupted) {
+			// Interrupted while waiting for input: stop at the instruction
+			// (or call) that reads; it reads again on continue.
+			return fmt.Sprintf("T%02xthread:01;", sigINT)
+		}
 		if err != nil {
 			return s.stopped(err)
+		}
+		if s.stopNow {
+			s.stopNow = false
+			return fmt.Sprintf("T%02xthread:01;", sigINT)
 		}
 		if s.hitSet {
 			return fmt.Sprintf("T%02xwatch:%x;thread:01;", sigTRAP, s.hit)
@@ -338,8 +356,11 @@ func (s *Server) stopped(err error) string {
 	}
 	var f *emu.Fault
 	if errors.As(err, &f) {
-		// Explain it in nasmx86's words, in the terminal and in gdb.
-		s.output(s.p.Describe(f) + "\n")
+		// Explain it in nasmx86's words, in the terminal and in gdb (with
+		// the console, Finish prints it there already).
+		if !s.console {
+			s.output(s.p.Describe(f) + "\n")
+		}
 		code := s.p.Finish(err)
 		if f.Kind == emu.FaultBreakpoint {
 			// int3 in the program: stop like a breakpoint, past the int3.
@@ -395,6 +416,9 @@ func (s *Server) readMem(args string) string {
 	if !found || err1 != nil || err2 != nil {
 		return "E01"
 	}
+	if b, ok := s.fioRead(addr, min(n, 0x1000)); ok {
+		return hex.EncodeToString(b)
+	}
 	b := s.p.CPU.Mem.Peek(addr, int(min(n, 0x1000)))
 	if len(b) == 0 && n > 0 {
 		return "E14" // EFAULT
@@ -410,6 +434,9 @@ func (s *Server) writeMem(args string) string {
 	b, err3 := hex.DecodeString(data)
 	if !found || !found2 || err1 != nil || err2 != nil || err3 != nil || uint64(len(b)) != n {
 		return "E01"
+	}
+	if s.fioWrite(addr, b) {
+		return ok
 	}
 	m := s.p.CPU.Mem
 	for i := range b {
