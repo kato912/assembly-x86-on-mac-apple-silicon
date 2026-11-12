@@ -74,7 +74,7 @@ func Run(p *runner.Program, exe string, o Options) int {
 		wrapper := filepath.Join(dir, "nasmx86-gdb")
 		os.WriteFile(script, []byte(gdbScript(target)), 0o644)
 		os.WriteFile(wrapper, []byte("#!/bin/sh\nexec "+shellQuote(gdb)+" -x "+shellQuote(script)+" \"$@\"\n"), 0o755)
-		env, ok := x11Env()
+		env, ok := x11Env(say)
 		if !ok {
 			say("ddd.noXQuartz")
 			return runner.ExitNoNasm
@@ -182,7 +182,7 @@ func utf8Locale(env []string) []string {
 // x11Env returns the environment for an X11 program such as DDD. On macOS
 // it starts XQuartz when no X display is set (a fresh install sets
 // DISPLAY only after logging out and in again).
-func x11Env() ([]string, bool) {
+func x11Env(say func(string, ...any)) ([]string, bool) {
 	env := os.Environ()
 	if os.Getenv("DISPLAY") != "" || runtime.GOOS != "darwin" {
 		return env, true
@@ -196,12 +196,16 @@ func x11Env() ([]string, bool) {
 	if app == "" {
 		return nil, false
 	}
+	const socket = "/tmp/.X11-unix/X0"
 	exec.Command("open", "-g", "-a", app).Run()
-	for i := 0; i < 100; i++ { // wait up to 10 s for its display socket
-		if _, err := os.Stat("/tmp/.X11-unix/X0"); err == nil {
-			break
+	if _, err := os.Stat(socket); err != nil {
+		say("ddd.startingX")
+		for i := 0; i < 200; i++ { // wait up to 20 s for its display
+			time.Sleep(100 * time.Millisecond)
+			if _, err := os.Stat(socket); err == nil {
+				break
+			}
 		}
-		time.Sleep(100 * time.Millisecond)
 	}
 	return append(env, "DISPLAY=:0"), true
 }

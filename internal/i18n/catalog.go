@@ -106,6 +106,8 @@ examples:
 		th: "กำลังเปิด DDD โดย gdb ของ DDD เชื่อมต่อกับ nasmx86 ที่ %s อินพุตและเอาต์พุตของโปรแกรมอยู่ในเทอร์มินัลนี้"},
 	"ddd.noXQuartz": {en: "DDD needs XQuartz (the X11 window system for macOS) to open its window. Install it once with:\n    brew install --cask xquartz\nthen run this command again (nasmx86 starts XQuartz by itself).",
 		th: "DDD ต้องใช้ XQuartz (ระบบหน้าต่าง X11 สำหรับ macOS) เพื่อเปิดหน้าต่าง ติดตั้งครั้งเดียวด้วย:\n    brew install --cask xquartz\nแล้วรันคำสั่งนี้อีกครั้ง (nasmx86 จะเปิด XQuartz ให้เอง)"},
+	"ddd.startingX": {en: "starting XQuartz for DDD's window...",
+		th: "กำลังเปิด XQuartz สำหรับหน้าต่างของ DDD..."},
 	"ddd.noDisplay": {en: "DDD could not open its window. Start XQuartz (open -a XQuartz) and try again; if it still fails, log out and log in once.",
 		th: "DDD เปิดหน้าต่างไม่ได้ ให้เปิด XQuartz (open -a XQuartz) แล้วลองอีกครั้ง ถ้ายังไม่ได้ให้ออกจากระบบแล้วเข้าใหม่หนึ่งครั้ง"},
 	"ddd.failed": {en: "DDD stopped: %v\n%s", th: "DDD หยุดทำงาน: %v\n%s"},
