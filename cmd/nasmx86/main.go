@@ -37,8 +37,9 @@ func (e usageError) Error() string { return string(e) }
 
 func main() {
 	i18n.Init()
-	// Started as ld, gcc, ddd or gdb (links to nasmx86 that nasmx86 setup
-	// puts first on PATH), or with a subcommand such as nasmx86 setup.
+	// Started as nasm-x86, yasm-x86, ld, gcc, ddd or gdb (links to nasmx86
+	// that brew install and nasmx86 setup make), or with a subcommand such
+	// as nasmx86 setup.
 	if code, ok := runTool(filepath.Base(os.Args[0]), os.Args[1:]); ok {
 		os.Exit(code)
 	}
@@ -64,8 +65,9 @@ func main() {
 	os.Exit(run(opts))
 }
 
-// toolNames are the Linux commands nasmx86 can stand in for.
-var toolNames = []string{"ld", "gcc", "ddd", "gdb"}
+// toolNames are the commands nasmx86 can be started as: the assemblers
+// under x86 names, and the Linux commands it stands in for.
+var toolNames = []string{"ld", "gcc", "ddd", "gdb", "nasm-x86", "yasm-x86"}
 
 // runTool runs nasmx86 as the Linux command name, if it is one of toolNames.
 func runTool(name string, args []string) (int, bool) {
@@ -78,6 +80,10 @@ func runTool(name string, args []string) (int, bool) {
 		return dddMain(args), true
 	case "gdb":
 		return gdbMain(args), true
+	case "nasm-x86":
+		return asmMain("nasm", args), true
+	case "yasm-x86":
+		return asmMain("yasm", args), true
 	}
 	return 0, false
 }

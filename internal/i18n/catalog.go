@@ -33,7 +33,8 @@ examples:
 
 Linux commands, as in course sheets (on a Mac, brew install sets up ld,
 gcc, ddd and gdb for new terminal windows; or type nasmx86 ld ..., etc.):
-  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  nasm-x86 -f elf64 -g -F dwarf -o hello.o hello.asm   (the real nasm)
+  yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s       (the real yasm)
   ld -o hello hello.o            gcc -o cprintf printf.o (main + C library)
   ./hello                        gcc main.c stats.o -o cstats (C + assembly)
   ddd ./hello &                  gdb ./hello
@@ -68,7 +69,8 @@ gcc, ddd and gdb for new terminal windows; or type nasmx86 ld ..., etc.):
 
 คำสั่งแบบ Linux ตามเอกสารประกอบวิชา (บน Mac, brew install ตั้งค่า ld, gcc, ddd
 และ gdb ให้หน้าต่างเทอร์มินัลใหม่แล้ว หรือพิมพ์ nasmx86 ld ... เป็นต้น):
-  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  nasm-x86 -f elf64 -g -F dwarf -o hello.o hello.asm   (nasm ตัวจริง)
+  yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s       (yasm ตัวจริง)
   ld -o hello hello.o            gcc -o cprintf printf.o (main + ไลบรารี C)
   ./hello                        gcc main.c stats.o -o cstats (C + แอสเซมบลี)
   ddd ./hello &                  gdb ./hello
@@ -122,8 +124,8 @@ gcc, ddd and gdb for new terminal windows; or type nasmx86 ld ..., etc.):
 	"err.noInput":   {en: "no input files", th: "ไม่ได้ระบุไฟล์ที่จะลิงก์"},
 	"err.cantFind":  {en: "cannot find %s: No such file or directory", th: "ไม่พบไฟล์ %s"},
 	"err.notObject": {en: "%s: file format not recognized: it is not an object file", th: "%s: ไม่ใช่ไฟล์ object"},
-	"hint.assembleFirst": {en: "assemble it into an object file first, e.g.  yasm -f elf64 -g dwarf2 -o %[1]s.o %[2]s",
-		th: "ให้ assemble เป็นไฟล์ object ก่อน เช่น  yasm -f elf64 -g dwarf2 -o %[1]s.o %[2]s"},
+	"hint.assembleFirst": {en: "assemble it into an object file first, e.g.  yasm-x86 -f elf64 -g dwarf2 -o %[1]s.o %[2]s",
+		th: "ให้ assemble เป็นไฟล์ object ก่อน เช่น  yasm-x86 -f elf64 -g dwarf2 -o %[1]s.o %[2]s"},
 	"err.badOption": {en: "unrecognized option '%s'", th: "ไม่รู้จักตัวเลือก '%s'"},
 	"err.badEmulation": {en: "unrecognised emulation mode: %s (use elf_x86_64 or elf_i386)",
 		th: "ไม่รู้จัก emulation mode: %s (ใช้ elf_x86_64 หรือ elf_i386)"},
@@ -137,7 +139,7 @@ gcc, ddd and gdb for new terminal windows; or type nasmx86 ld ..., etc.):
 
 Makes ld, gcc, ddd and gdb in new terminal windows work as on Linux for x86
 programs, so course commands work as typed on a Mac:
-  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s
   ld -o hello hello.o
   ./hello
   ddd ./hello &
@@ -149,7 +151,7 @@ For a Mac's own programs, ld and gcc still run the Mac's ld and gcc.
 
 ทำให้ ld, gcc, ddd และ gdb ในหน้าต่างเทอร์มินัลใหม่ทำงานเหมือนบน Linux สำหรับโปรแกรม x86
 คำสั่งในวิชาจึงพิมพ์บน Mac ได้ตามเดิม:
-  yasm -f elf64 -g dwarf2 -o hello.o hello.s
+  yasm-x86 -f elf64 -g dwarf2 -o hello.o hello.s
   ld -o hello hello.o
   ./hello
   ddd ./hello &
@@ -164,6 +166,8 @@ For a Mac's own programs, ld and gcc still run the Mac's ld and gcc.
 	"setup.cannotWrite": {en: "cannot change %s: %v", th: "แก้ไฟล์ %s ไม่ได้: %v"},
 	"setup.notNeeded": {en: "not needed here: this system has its own ld and gcc for Linux programs",
 		th: "ไม่จำเป็นบนระบบนี้: มี ld และ gcc สำหรับโปรแกรม Linux อยู่แล้ว"},
+	"err.asmMissing": {en: "%[1]s is not installed. Install it with Homebrew (brew install %[1]s) or your package manager (e.g. sudo apt install %[1]s)",
+		th: "ยังไม่ได้ติดตั้ง %[1]s ติดตั้งด้วย Homebrew (brew install %[1]s) หรือตัวจัดการแพ็กเกจ (เช่น sudo apt install %[1]s)"},
 	"err.noClang": {en: "compiling C needs the Mac's C compiler (clang). Install it once with:  xcode-select --install",
 		th: "การคอมไพล์ภาษา C ต้องใช้คอมไพเลอร์ C ของ Mac (clang) ติดตั้งครั้งเดียวด้วย:  xcode-select --install"},
 	"hint.cFloat": {en: "nasmx86 runs integer programs only: float and double (SSE and x87 instructions) are not supported",
