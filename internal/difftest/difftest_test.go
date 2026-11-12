@@ -1,6 +1,8 @@
 // Package difftest runs the differential test programs in testdata/diff
 // (and the examples) through nasmx86 and, on x86-64 Linux, natively with
-// nasm + ld, requiring identical stdout and exit status.
+// nasm + ld, requiring identical stdout and exit status. Programs in
+// testdata/diff/libc32 and libc64 call the C library; natively they are
+// linked with gcc against glibc.
 //
 // Environment:
 //
@@ -37,9 +39,13 @@ type program struct {
 	stdin    []byte
 	wantExit int
 	incDir   string
+	libc     bool // link with gcc + glibc natively
 }
 
 var exitRE = regexp.MustCompile(`(?m)^;\s*exit:\s*(\d+)`)
+
+// usesLibcRE spots examples that call the C library (linked with gcc natively).
+var usesLibcRE = regexp.MustCompile(`(?mi)^\s*extern\s+[^;\n]*\b(?:printf|scanf|puts|malloc)\b`)
 
 // collect finds the test programs: every *.asm file in testdata/diff/32,
 // testdata/diff/64 and examples, and every subdirectory there, which is one
@@ -47,12 +53,13 @@ var exitRE = regexp.MustCompile(`(?m)^;\s*exit:\s*(\d+)`)
 func collect(t *testing.T) []program {
 	var progs []program
 	inc, _ := filepath.Abs(filepath.Join(diffDir, "inc"))
+	libc := false
 	add := func(name string, files []string, bits int, inPath string) {
 		src, err := os.ReadFile(files[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		p := program{name: name, path: files[0], extra: files[1:], bits: bits, incDir: inc}
+		p := program{name: name, path: files[0], extra: files[1:], bits: bits, incDir: inc, libc: libc || usesLibcRE.Match(src)}
 		if m := exitRE.FindSubmatch(src); m != nil {
 			p.wantExit, _ = strconv.Atoi(string(m[1]))
 		}
@@ -83,6 +90,11 @@ func collect(t *testing.T) []program {
 	for _, bits := range []int{32, 64} {
 		scan(filepath.Join(diffDir, strconv.Itoa(bits)), bits, func(_, stem string) string { return stem + ".in" })
 	}
+	libc = true
+	for _, bits := range []int{32, 64} {
+		scan(filepath.Join(diffDir, "libc"+strconv.Itoa(bits)), bits, func(_, stem string) string { return stem + ".in" })
+	}
+	libc = false
 	scan(exampleDir, 0, func(base, _ string) string { return filepath.Join(inputDir, base+".in") })
 	if len(progs) == 0 {
 		t.Fatal("no test programs found")

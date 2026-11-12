@@ -59,7 +59,9 @@ jobs:
           go-version-file: go.mod
       - name: Install nasm
         run: scripts/ci-install-nasm.sh
-      - run: nasm -v && ld -v && uname -m && grep -m1 'model name' /proc/cpuinfo
+      - name: Install gcc -m32 (for the 32-bit C library tests)
+        run: scripts/ci-install-multilib.sh
+      - run: nasm -v && ld -v && gcc --version | head -1 && ldd --version | head -1 && uname -m && grep -m1 'model name' /proc/cpuinfo
       - name: Differential tests
         shell: bash
         run: go test ./internal/difftest -v -count=1 2>&1 | tee test-output.txt; exit ${PIPESTATUS[0]}

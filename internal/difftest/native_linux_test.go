@@ -56,11 +56,20 @@ func runNative(t *testing.T, p program) ([]byte, int, error) {
 		}
 		ldArgs = append(ldArgs, res.Object)
 	}
-	if bits == 32 {
+	linker := "ld"
+	switch {
+	case p.libc:
+		// gcc links the C runtime (which calls main) and glibc.
+		linker = "gcc"
+		ldArgs = append([]string{"-no-pie", "-z", "noexecstack"}, ldArgs...)
+		if bits == 32 {
+			ldArgs = append([]string{"-m32"}, ldArgs...)
+		}
+	case bits == 32:
 		ldArgs = append([]string{"-m", "elf_i386"}, ldArgs...)
 	}
-	if out, err := exec.Command("ld", ldArgs...).CombinedOutput(); err != nil {
-		return nil, 0, errors.New("ld: " + string(out))
+	if out, err := exec.Command(linker, ldArgs...).CombinedOutput(); err != nil {
+		return nil, 0, errors.New(linker + ": " + string(out))
 	}
 	cmd := exec.Command("sh", "-c", `ulimit -s 8192 2>/dev/null; exec "$0"`, exe)
 	cmd.Stdin = bytes.NewReader(p.stdin)
