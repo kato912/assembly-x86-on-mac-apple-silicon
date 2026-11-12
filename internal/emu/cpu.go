@@ -60,6 +60,10 @@ type CPU struct {
 	// NativeRan names the C function the last step ran ("" if none); the
 	// native code sets it.
 	NativeRan string
+	// BreakNative, when it returns true for a C function's address, makes
+	// a call stop at the function's entry (a debugger breakpoint on printf)
+	// instead of running it at once; the next Step runs it.
+	BreakNative func(addr uint64) bool
 
 	pc, next uint64 // current instruction address and fall-through address
 	branched bool   // current instruction transferred control
@@ -178,7 +182,7 @@ func (c *CPU) Step() error {
 	c.NativeRan = ""
 	err = d.h(c, &d.inst)
 	c.Steps++
-	if err == nil && c.IsNative(c.RIP) {
+	if err == nil && c.IsNative(c.RIP) && (c.BreakNative == nil || !c.BreakNative(c.RIP)) {
 		// call printf (or jmp printf): run the C function right away, so
 		// the call behaves like one instruction, as stepping over it in
 		// gdb does.
@@ -234,6 +238,10 @@ func (c *CPU) stepNative(pc uint64) error {
 	c.prevPC, c.prevLen, c.prevOp, c.prevBranched, c.havePrev = pc, 0, x86asm.RET, true, true
 	return nil
 }
+
+// InvalidateCode forgets decoded instructions (after a debugger wrote to
+// code memory).
+func (c *CPU) InvalidateCode() { c.cache = make(map[uint64]*decoded) }
 
 // PC returns the address of the instruction being executed (for system
 // call and native code hooks).
