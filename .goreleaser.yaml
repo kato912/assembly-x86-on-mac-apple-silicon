@@ -78,7 +78,11 @@ homebrew_casks:
     # there is no XQuartz on Linux. `brew uninstall nasmx86` removes the
     # formulae again when nothing else needs them; XQuartz is a cask, which
     # Homebrew never removes by itself (brew uninstall nasmx86 xquartz).
+    # nasm-x86 and yasm-x86 are nasmx86 too: the real nasm and yasm under
+    # names that say the code is x86 (nasm-x86 -f elf64 -o hello.o hello.asm).
     custom_block: |
+      binary "nasmx86", target: "nasm-x86"
+      binary "nasmx86", target: "yasm-x86"
       on_macos do
         depends_on formula: [
           "ddd",
@@ -112,7 +116,7 @@ homebrew_casks:
       Try:  nasmx86 hello.asm   (nasmx86 --help for options, --th for Thai)
       Debug in DDD (macOS):  nasmx86 --ddd hello.asm
       Linux commands (macOS, in a new terminal window):
-        yasm -f elf64 -g dwarf2 -o hello.o hello.s
+        nasm-x86 -f elf64 -g -F dwarf -o hello.o hello.asm   (or yasm-x86 ... hello.s)
         ld -o hello hello.o      (or gcc -o hello hello.o for main and printf)
         ./hello
         ddd ./hello &

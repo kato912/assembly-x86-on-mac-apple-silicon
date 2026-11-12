@@ -101,6 +101,9 @@ mkdir -p "$dir"
 cp "$tmp/nasmx86" "$dir/nasmx86.new"
 chmod 755 "$dir/nasmx86.new"
 mv -f "$dir/nasmx86.new" "$dir/nasmx86"
+# nasm-x86 and yasm-x86: the real nasm and yasm under names that say x86.
+ln -sf nasmx86 "$dir/nasm-x86"
+ln -sf nasmx86 "$dir/yasm-x86"
 if [ "$os" = darwin ]; then
     # Files fetched by curl are not quarantined, but clear the flag in case a
     # browser-downloaded copy was involved, so Gatekeeper does not block it.
