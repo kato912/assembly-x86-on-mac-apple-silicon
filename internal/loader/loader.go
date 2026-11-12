@@ -54,6 +54,15 @@ type Image struct {
 	Symbols   []Symbol        // sorted by address
 	BrkStart  uint64          // first address after the program (page aligned)
 	Externs   map[string]bool // external (C library) symbols the program uses
+	Debug     []DebugSection  // linked DWARF sections (with Options.Debug)
+}
+
+// DebugSection is a .debug_* section of the linked program: the sections
+// of that name from every input file, concatenated, with relocations
+// applied (so a debugger can use the program's DWARF line tables).
+type DebugSection struct {
+	Name string
+	Data []byte
 }
 
 // UndefinedError lists symbols used but never defined (e.g. extern printf).
@@ -86,12 +95,24 @@ type object struct {
 
 // Link links one or more relocatable ELF objects (as produced by nasm)
 // into a single image. global/extern symbols are resolved across files.
-func Link(paths ...string) (*Image, error) { return LinkWith(nil, paths...) }
+func Link(paths ...string) (*Image, error) { return LinkOpts(Options{}, paths...) }
 
 // LinkWith is Link with external symbols (the built-in C library):
 // undefined symbols found in externs resolve to those addresses, and the
 // names used are recorded in Image.Externs.
 func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
+	return LinkOpts(Options{Externs: externs}, paths...)
+}
+
+// Options control LinkOpts.
+type Options struct {
+	Externs map[string]uint64 // see LinkWith
+	Debug   bool              // also link the DWARF .debug_* sections (Image.Debug)
+}
+
+// LinkOpts links with the given options.
+func LinkOpts(opts Options, paths ...string) (*Image, error) {
+	externs := opts.Externs
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("no object files to link")
 	}
@@ -137,8 +158,23 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 	//    (r-x), read-only data (r--), writable data then bss (rw-), keeping
 	//    the files in command-line order.
 	var code, rodata, data, bss []*Section
+	debugPieces := map[string][]*Section{}
+	var debugNames []string
 	for oi, o := range objs {
 		for i, s := range o.f.Sections {
+			if opts.Debug && s.Flags&elf.SHF_ALLOC == 0 && s.Type == elf.SHT_PROGBITS && strings.HasPrefix(s.Name, ".debug_") {
+				d, err := s.Data()
+				if err != nil {
+					return nil, fmt.Errorf("reading section %s of %s: %v", s.Name, o.path, err)
+				}
+				sec := &Section{Name: s.Name, Size: s.Size, Data: d, Obj: oi, index: i, align: max(s.Addralign, 1)}
+				o.secs[i] = sec
+				if _, ok := debugPieces[s.Name]; !ok {
+					debugNames = append(debugNames, s.Name)
+				}
+				debugPieces[s.Name] = append(debugPieces[s.Name], sec)
+				continue
+			}
 			if s.Flags&elf.SHF_ALLOC == 0 || (s.Type != elf.SHT_PROGBITS && s.Type != elf.SHT_NOBITS) {
 				continue
 			}
@@ -262,6 +298,16 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 		img.Sections = append(img.Sections, group...)
 	}
 	img.BrkStart = alignUp(addr, page)
+	// Debug sections are not loaded: each piece's "address" is its offset
+	// in the merged section, which is what DWARF offsets refer to.
+	for _, name := range debugNames {
+		off := uint64(0)
+		for _, sec := range debugPieces[name] {
+			off = alignUp(off, sec.align)
+			sec.Addr = off
+			off += sec.Size
+		}
+	}
 
 	// 3. Resolve symbols: first each file's own definitions, then the global
 	//    table for symbols a file uses but does not define (extern).
@@ -371,6 +417,16 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 	}
 	if len(undefined) > 0 {
 		return nil, &UndefinedError{Names: undefined}
+	}
+	for _, name := range debugNames {
+		var merged []byte
+		for _, sec := range debugPieces[name] {
+			for uint64(len(merged)) < sec.Addr {
+				merged = append(merged, 0)
+			}
+			merged = append(merged, sec.Data...)
+		}
+		img.Debug = append(img.Debug, DebugSection{Name: name, Data: merged})
 	}
 
 	// 5. Entry point: a global _start, then any _start, then main.
