@@ -80,7 +80,7 @@ func Run(p *runner.Program, exe string, o Options) int {
 			return runner.ExitNoNasm
 		}
 		cmd := exec.Command(ddd, "--gdb", "--debugger", wrapper, exe)
-		cmd.Env = env
+		cmd.Env = utf8Locale(env)
 		cmd.Stdout, cmd.Stderr = &dddOut, &dddOut
 		if err := cmd.Start(); err != nil {
 			say("ddd.failed", err, "")
@@ -137,6 +137,47 @@ target extended-remote ` + target + `
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// utf8Locale makes DDD read sources as UTF-8. In the C locale (a shell
+// with no LANG) DDD 3.4 counts each byte of a non-ASCII character, such as
+// a Thai comment or an em dash, as a character of its own, so its
+// execution arrow and stop signs land on the wrong line or vanish.
+func utf8Locale(env []string) []string {
+	get := func(key string) string {
+		v := ""
+		for _, kv := range env {
+			if k, val, ok := strings.Cut(kv, "="); ok && k == key {
+				v = val
+			}
+		}
+		return v
+	}
+	ctype := get("LC_ALL")
+	if ctype == "" {
+		ctype = get("LC_CTYPE")
+	}
+	if ctype == "" {
+		ctype = get("LANG")
+	}
+	norm := strings.ToLower(strings.ReplaceAll(ctype, "-", ""))
+	if strings.Contains(norm, "utf8") {
+		return env
+	}
+	key, loc := "LC_CTYPE", "C.UTF-8"
+	if runtime.GOOS == "darwin" {
+		loc = "en_US.UTF-8"
+	}
+	if get("LC_ALL") != "" {
+		key = "LC_ALL" // it overrides LC_CTYPE
+	}
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, key+"=") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, key+"="+loc)
+}
 
 // x11Env returns the environment for an X11 program such as DDD. On macOS
 // it starts XQuartz when no X display is set (a fresh install sets
