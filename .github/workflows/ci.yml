@@ -61,10 +61,12 @@ jobs:
         run: scripts/ci-install-nasm.sh
       - name: Install gcc -m32 (for the 32-bit C library tests)
         run: scripts/ci-install-multilib.sh
+      - name: Install gdb (to test nasmx86 --gdb against a real gdb)
+        run: sudo apt-get install -y gdb || { sudo apt-get update && sudo apt-get install -y gdb; } || echo "::warning::gdb not installed; the real-gdb test is skipped"
       - run: nasm -v && ld -v && gcc --version | head -1 && ldd --version | head -1 && uname -m && grep -m1 'model name' /proc/cpuinfo
       - name: Differential tests
         shell: bash
-        run: go test ./internal/difftest -v -count=1 2>&1 | tee test-output.txt; exit ${PIPESTATUS[0]}
+        run: go test ./internal/difftest ./internal/gdbstub -v -count=1 2>&1 | tee test-output.txt; exit ${PIPESTATUS[0]}
         env:
           NASMX86_REQUIRE_NATIVE: "1"
       - name: Report failures as annotations

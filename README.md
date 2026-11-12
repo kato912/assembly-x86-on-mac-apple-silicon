@@ -198,6 +198,8 @@ Force it with `-32` / `-64`, or with the nasm flag from your class sheet:
 |---|---|
 | `--trace` | print every executed instruction with its source line and what changed (registers, flags, memory, system calls) — to stderr |
 | `--step` | interactive debugger (see below) |
+| `--ddd` | debug in DDD, the graphical debugger, through gdb ([below](#ddd-and-gdb)) |
+| `--gdb[=PORT]` | let gdb connect: `target extended-remote localhost:1234` |
 | `--regs` | print all registers and flags when the program ends |
 | `-32`, `-64` | force 32- or 64-bit mode |
 | `-f elf32`, `-f elf64` | same as `-32`/`-64` (nasm style). `-o`, `-g`, `-F`, `-l` are accepted and ignored; other nasm options (`-D`, `-I`, `-w`...) are passed to nasm |
@@ -295,6 +297,33 @@ returned from fact: eax = 0x00000001 (1)
 (nasmx86) watch eax         ← stop each time eax changes
 ```
 
+### DDD and gdb
+
+`nasmx86 --ddd prog.asm` opens your program in **DDD**, the graphical
+debugger many assembly courses use — the real DDD with the real gdb
+underneath, so lab sheets work as written (`break`, `run`, `step`, `next`,
+`display`, `x/4dw &arr`, `info registers`...). nasmx86 plays the part of
+the Linux machine: it runs the program, and gdb controls it over gdb's
+remote protocol, as it does with `gdbserver`. Your program's own input and
+output stay in the terminal where you typed the command.
+
+One-time setup on a Mac (Homebrew):
+
+```bash
+brew install ddd x86_64-elf-gdb
+brew install --cask xquartz       # the X11 window system DDD draws with
+```
+
+`nasmx86 --gdb prog.asm` does the same for gdb on its own (or any front-end
+that speaks gdb's remote protocol): it waits on `localhost:1234` and prints
+the gdb command to run in a second terminal. `--gdb=4444` picks the port.
+
+As on Linux, gdb knows no types for assembly variables: use `x/dw &count`,
+`p (int)count` or `display (int)count`. `break printf` and `finish` work for
+the [C functions](#calling-c-functions-printf-scanf-) too, and a crash is
+reported to gdb as the Linux signal (SIGSEGV...) together with nasmx86's
+explanation.
+
 ### Errors explained
 
 | Situation | What nasmx86 says |
@@ -369,7 +398,7 @@ right command for your system.
 **My program waits forever.** It is probably reading stdin — type the input
 (Ctrl-D ends input), or pipe it: `echo 5 | nasmx86 prog.asm`.
 
-**Can I use gdb?** Use `nasmx86 --step` or `--trace` instead.
+**Can I use gdb or DDD?** Yes: `nasmx86 --gdb` or `--ddd` (see [DDD and gdb](#ddd-and-gdb)). `--step` is a built-in alternative that needs nothing else installed.
 
 ---
 
