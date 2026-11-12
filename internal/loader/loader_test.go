@@ -218,3 +218,26 @@ func TestLinkErrors(t *testing.T) {
 		t.Errorf("undefined: %v", err)
 	}
 }
+
+func TestEntryOption(t *testing.T) {
+	obj := assemble(t, 64, "section .text\nglobal _start, go\n_start: nop\ngo: nop\nmain: nop\n")
+	text := func(img *Image) uint64 { return img.SectionByName(".text").Addr }
+	img, err := LinkOpts(Options{Entry: "go"}, obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img.EntryName != "go" || img.Entry != text(img)+1 || img.EntryMissing {
+		t.Errorf("-e go: entry %#x %q missing=%v", img.Entry, img.EntryName, img.EntryMissing)
+	}
+	img, _ = LinkOpts(Options{Entry: "main"}, obj) // a local label is fine too
+	if img.EntryName != "main" || img.Entry != text(img)+2 {
+		t.Errorf("-e main: entry %#x %q", img.Entry, img.EntryName)
+	}
+	img, err = LinkOpts(Options{Entry: "nothere"}, obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !img.EntryMissing || img.EntryName != "" || img.Entry != text(img) {
+		t.Errorf("missing entry: %#x %q missing=%v", img.Entry, img.EntryName, img.EntryMissing)
+	}
+}

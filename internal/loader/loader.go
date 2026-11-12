@@ -50,11 +50,14 @@ type Image struct {
 	Bits      int
 	Entry     uint64
 	EntryName string // "_start", "main" or "" (start of .text)
-	Sections  []*Section
-	Symbols   []Symbol        // sorted by address
-	BrkStart  uint64          // first address after the program (page aligned)
-	Externs   map[string]bool // external (C library) symbols the program uses
-	Debug     []DebugSection  // linked DWARF sections (with Options.Debug)
+	// EntryMissing is set when Options.Entry names a symbol the program
+	// does not define; Entry is then the start of .text, as with GNU ld.
+	EntryMissing bool
+	Sections     []*Section
+	Symbols      []Symbol        // sorted by address
+	BrkStart     uint64          // first address after the program (page aligned)
+	Externs      map[string]bool // external (C library) symbols the program uses
+	Debug        []DebugSection  // linked DWARF sections (with Options.Debug)
 }
 
 // DebugSection is a .debug_* section of the linked program: the sections
@@ -108,6 +111,9 @@ func LinkWith(externs map[string]uint64, paths ...string) (*Image, error) {
 type Options struct {
 	Externs map[string]uint64 // see LinkWith
 	Debug   bool              // also link the DWARF .debug_* sections (Image.Debug)
+	// Entry is the symbol the program starts at (ld -e). When empty, it is
+	// a global _start, then any _start, then main.
+	Entry string
 }
 
 // LinkOpts links with the given options.
@@ -430,7 +436,11 @@ func LinkOpts(opts Options, paths ...string) (*Image, error) {
 	}
 
 	// 5. Entry point: a global _start, then any _start, then main.
-	for _, name := range []string{"_start", "main"} {
+	names := []string{"_start", "main"}
+	if opts.Entry != "" {
+		names = []string{opts.Entry}
+	}
+	for _, name := range names {
 		for _, wantGlobal := range []bool{true, false} {
 			for _, s := range img.Symbols {
 				if s.Name == name && s.Section != "" && (s.Global || !wantGlobal) {
@@ -440,6 +450,7 @@ func LinkOpts(opts Options, paths ...string) (*Image, error) {
 			}
 		}
 	}
+	img.EntryMissing = opts.Entry != ""
 	if len(code) == 0 || code[0].Size == 0 {
 		return nil, fmt.Errorf("no code found: the program has no instructions in section .text")
 	}
