@@ -375,7 +375,9 @@ underneath, so lab sheets work as written (`break`, `run`, `step`, `next`,
 `display`, `x/4dw &arr`, `info registers`...). nasmx86 plays the part of
 the Linux machine: it runs the program, and gdb controls it over gdb's
 remote protocol, as it does with `gdbserver`. Your program's own input and
-output stay in the terminal where you typed the command.
+output are in DDD's console (the bottom pane), as when DDD runs a program
+on Linux: type the program's input there. DDD's Interrupt (or Ctrl-C) while
+the program waits for input stops it at the read; continuing reads again.
 
 On a Mac, `brew install kato912/tap/nasmx86` already installs DDD, gdb and
 XQuartz. If you got nasmx86 another way (install.sh, from source), install
@@ -389,9 +391,12 @@ brew install --cask xquartz       # the X11 window system DDD draws with
 No logout is needed after installing XQuartz; nasmx86 starts it when DDD
 needs it.
 
-`nasmx86 --gdb prog.asm` does the same for gdb on its own (or any front-end
-that speaks gdb's remote protocol): it waits on `localhost:1234` and prints
-the gdb command to run in a second terminal. `--gdb=4444` picks the port.
+`gdb ./hello` runs gdb in the terminal the same way, the program's input and
+output going through gdb. `nasmx86 --gdb prog.asm` instead waits for gdb (or
+any front-end that speaks gdb's remote protocol) on `localhost:1234` and
+prints the gdb command to run in a second terminal; the program's input and
+output then stay in the first one, as with `gdbserver`. `--gdb=4444` picks
+the port.
 
 As on Linux, gdb knows no types for assembly variables: use `x/dw &count`,
 `p (int)count` or `display (int)count`. `break printf` and `finish` work for
